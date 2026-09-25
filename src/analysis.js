@@ -6,6 +6,7 @@ const normalize = (text) =>
     .filter((token) => token.length > 2);
 
 const keywordSet = (text) => new Set(normalize(text));
+const tieBreakCollator = new Intl.Collator("de-DE", { sensitivity: "base" });
 
 const overlap = (left, right) => {
   if (left.size === 0 || right.size === 0) {
@@ -36,7 +37,7 @@ export const computeDivergence = (decisions, brochureTopics) => {
         alignment > bestAlignment ||
         (alignment === bestAlignment &&
           bestTopic &&
-          topic.topic.localeCompare(bestTopic.topic) < 0)
+          tieBreakCollator.compare(topic.topic, bestTopic.topic) < 0)
       ) {
         bestAlignment = alignment;
         bestTopic = topic;
