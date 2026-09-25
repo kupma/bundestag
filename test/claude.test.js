@@ -59,3 +59,41 @@ test('refusals and truncation become errors instead of half articles', async () 
 test('no key, no client', () => {
   assert.equal(createClaude({ apiKey: '', model: 'claude-opus-5' }), null);
 });
+
+test('web search is limited to the given domains and survives a paused turn', async () => {
+  const replies = [
+    {
+      id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-opus-5', stop_reason: 'pause_turn', stop_sequence: null,
+      usage: { input_tokens: 10, output_tokens: 5 },
+      content: [
+        { type: 'server_tool_use', id: 'srvtoolu_1', name: 'web_search', input: { query: 'SPD Regierungsprogramm 2025 pdf' } },
+        { type: 'web_search_tool_result', tool_use_id: 'srvtoolu_1', content: [{ type: 'web_search_result', url: 'https://www.spd.de/a.pdf', title: 'A', encrypted_content: 'x', page_age: null }] },
+      ],
+    },
+    {
+      id: 'msg_2', type: 'message', role: 'assistant', model: 'claude-opus-5', stop_reason: 'end_turn', stop_sequence: null,
+      usage: { input_tokens: 12, output_tokens: 6 },
+      content: [
+        { type: 'web_search_tool_result', tool_use_id: 'srvtoolu_2', content: { type: 'web_search_tool_result_error', error_code: 'max_uses_exceeded' } },
+        { type: 'text', text: 'Die Langfassung: https://www.spd.de/b.pdf.' },
+      ],
+    },
+  ];
+  const requests = [];
+  const fetch = async (url, init) => {
+    requests.push({ headers: new Headers(init.headers), body: JSON.parse(init.body) });
+    return new Response(JSON.stringify(replies[requests.length - 1]), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const claude = createClaude({ apiKey: 'k', model: 'claude-opus-5', fetch });
+  const urls = await claude.findUrls({ prompt: 'Finde das PDF', domains: ['spd.de'] });
+
+  assert.deepEqual(urls, ['https://www.spd.de/b.pdf', 'https://www.spd.de/a.pdf'], 'named URL first, trailing punctuation removed');
+  assert.equal(requests.length, 2, 'the paused turn was resumed');
+  const [first, second] = requests;
+  assert.deepEqual(first.body.tools, [{ type: 'web_search_20260209', name: 'web_search', max_uses: 4, allowed_domains: ['spd.de'] }]);
+  assert.equal(first.body.fallbacks, 'default');
+  assert.match(first.headers.get('anthropic-beta'), /server-side-fallback-2026-07-01/);
+  assert.equal(second.body.messages.length, 2);
+  assert.equal(second.body.messages[1].role, 'assistant', 'the paused assistant turn is sent back unchanged');
+  assert.equal(second.body.messages[1].content[1].type, 'web_search_tool_result');
+});

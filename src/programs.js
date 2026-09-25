@@ -27,7 +27,12 @@ export async function downloadPdf(url, { fetch = globalThis.fetch } = {}) {
     throw new Error('Das ist keine gültige Adresse.');
   }
   if (!/^https?:$/.test(parsed.protocol)) throw new Error('Nur http- und https-Adressen sind erlaubt.');
-  const res = await fetch(parsed, { redirect: 'follow', signal: AbortSignal.timeout(120000) });
+  const res = await fetch(parsed, {
+    redirect: 'follow',
+    // Some party sites turn away requests without a browser-like agent.
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Versprochen-Beschlossen/1.0)', Accept: 'application/pdf,*/*;q=0.8' },
+    signal: AbortSignal.timeout(120000),
+  });
   if (!res.ok) throw new Error(`Download fehlgeschlagen: HTTP ${res.status}`);
   const len = Number(res.headers.get('content-length') || 0);
   if (len > MAX_PDF_BYTES) throw new Error('Die Datei ist größer als 80 MB.');
@@ -71,16 +76,18 @@ async function uniqueSlug(db, base) {
 export async function createProgram(db, meta) {
   const slug = await uniqueSlug(db, `${meta.party} ${meta.election || meta.title}`);
   return db.one(
-    `insert into programs (slug, party, title, kind, election, source_url)
-     values ($1, $2, $3, $4, $5, $6) returning *`,
-    [slug, meta.party, meta.title, meta.kind, meta.election, meta.sourceUrl],
+    `insert into programs (slug, party, title, kind, election, source_url, source_key)
+     values ($1, $2, $3, $4, $5, $6, $7) returning *`,
+    [slug, meta.party, meta.title, meta.kind, meta.election, meta.sourceUrl, meta.sourceKey || null],
   );
 }
 
-export async function ingestProgramPdf({ db, embedder, log = () => {} }, programId, bytes) {
+// `pages` may be passed in when the caller has already read the PDF (the
+// standard library checks a download before importing it).
+export async function ingestProgramPdf({ db, embedder, log = () => {} }, programId, bytes, { pages: known = null } = {}) {
   try {
     assertPdf(bytes);
-    const pages = await extractPages(bytes);
+    const pages = known || (await extractPages(bytes));
     const chunks = [];
     pages.forEach((pageText, i) => {
       chunkPage(cleanPageText(pageText)).forEach((text, ord) => chunks.push({ page: i + 1, ord, text }));

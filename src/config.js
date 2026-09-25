@@ -54,6 +54,8 @@ export function loadConfig(env = process.env) {
     adminEmails: list(env.ADMIN_EMAILS),
 
     scheduler: env.SCHEDULER !== 'off',
+    // Download the election programmes of the Bundestag parties by itself.
+    defaultLibrary: env.DEFAULT_LIBRARY !== 'off',
     cronSecret: env.CRON_SECRET || '',
     lookbackDays: int(env.DIP_LOOKBACK_DAYS, 10),
     settleHours: int(env.ARTICLE_SETTLE_HOURS, 12),

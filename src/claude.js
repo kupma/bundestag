@@ -77,5 +77,47 @@ export function createClaude({ apiKey, model, fetch }) {
     };
   }
 
-  return { model, json };
+  // Web search, used only when a standard-library PDF has moved: Claude
+  // searches the given domains, and every URL it names or finds comes back
+  // for the caller to check. Nothing found here is trusted without that check.
+  async function findUrls({ prompt, domains, maxUses = 4 }) {
+    const messages = [{ role: 'user', content: prompt }];
+    const blocks = [];
+    let message;
+    // A server-side tool loop can pause; resuming means sending the paused
+    // turn back unchanged.
+    for (let turn = 0; turn < 3; turn++) {
+      try {
+        message = await client.beta.messages.create({
+          model,
+          max_tokens: 8000,
+          betas: ['server-side-fallback-2026-07-01'],
+          fallbacks: 'default',
+          output_config: { effort: 'low' },
+          tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: maxUses, allowed_domains: domains }],
+          messages,
+        });
+      } catch (err) {
+        throw explain(err);
+      }
+      blocks.push(...message.content);
+      if (message.stop_reason !== 'pause_turn') break;
+      messages.push({ role: 'assistant', content: message.content });
+    }
+    if (message.stop_reason === 'refusal') throw new ClaudeError('Claude hat die Suche abgelehnt.');
+
+    const named = [];
+    const found = [];
+    for (const block of blocks) {
+      if (block.type === 'text') {
+        for (const m of block.text.matchAll(/https?:\/\/[^\s"'<>()[\]]+/g)) named.push(m[0].replace(/[.,;:]+$/, ''));
+      } else if (block.type === 'web_search_tool_result' && Array.isArray(block.content)) {
+        // A list is a success; an object here would be a search error.
+        for (const r of block.content) if (r && r.url) found.push(r.url);
+      }
+    }
+    return [...new Set([...named, ...found])];
+  }
+
+  return { model, json, findUrls };
 }

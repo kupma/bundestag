@@ -54,15 +54,15 @@ Programme PDFs ──► page-exact passages ──► German full-text index (+
    | `VOYAGE_API_KEY` | optional, adds semantic search |
 4. **Networking → Generate Domain.** `BASE_URL` defaults to that domain; set it explicitly if you use a custom domain.
 5. Open the site, **register with an address from `ADMIN_EMAILS`**, and go to **/admin**.
-6. **Fill the library** (in *Bibliothek*): add each programme with its PDF address, or upload the PDF and give the address for the links. For the 21st Bundestag (election of 23 February 2025) that means:
-   - CDU/CSU: *Politikwechsel für Deutschland*
+6. **The library fills itself.** On the first tick after a deploy (about 20 seconds after start), the app downloads the programmes of every group in the 21st Bundestag and the coalition agreement from the official websites, checks them, and imports them. The sources are listed in `src/program-sources.js`:
    - AfD: *Zeit für Deutschland*
-   - SPD: *Mehr für Dich. Besser für Deutschland.*
    - Bündnis 90/Die Grünen: *Zusammen wachsen*
+   - CDU/CSU: *Politikwechsel für Deutschland*
    - Die Linke: *Alle wollen regieren. Wir wollen verändern.*
-   - CDU, CSU and SPD: coalition agreement *Verantwortung für Deutschland*, with kind *Koalitionsvertrag*
+   - SPD: *Mehr für Dich. Besser für Deutschland.*
+   - CDU, CSU and SPD: coalition agreement *Verantwortung für Deutschland*
 
-   Download them from the parties' own websites. A scanned PDF without a text layer needs OCR first; the import says so if that's the case.
+   Every download must pass three checks before it is imported: it is a PDF, it is long enough to be the full version rather than a short one, and it names its own title. If a party has moved its file, the app asks Claude's web search for the current one, restricted to that party's own domains, and checks it the same way. *Admin → Bibliothek* shows the status of each document, and *Fehlende jetzt laden* retries. Other documents can still be added by address or upload. Set `DEFAULT_LIBRARY=off` to switch the automatic import off.
 7. **Check DIP:** in the Railway shell (or locally with the key), run `npm run dip:probe -- 2026-09-24 --raw` for a recent sitting day. Then press *Jetzt aktualisieren* in the admin area. To write an article right away, use *Artikel für Sitzungstag erzeugen*.
 8. **Review `/datenschutz`** (a template) before going public.
 
@@ -82,7 +82,8 @@ Scripts (all read the same environment variables, so they also work with `railwa
 | Command | |
 |---|---|
 | `npm run dip:probe -- 2026-09-24 [2026-09-26] [--raw]` | what DIP returns and which decisions the app extracts. Read-only |
-| `npm run ingest -- --party SPD --title "…" --election "Bundestagswahl 2025" --url https://…pdf [--file local.pdf] [--kind koalitionsvertrag]` | import a programme |
+| `npm run ingest -- --defaults` | import the standard library now (what the clock does on its own) |
+| `npm run ingest -- --party SPD --title "…" --election "Bundestagswahl 2025" --url https://…pdf [--file local.pdf] [--kind koalitionsvertrag]` | import any other programme |
 | `npm run generate -- 2026-09-24 [--force] [--mail]` | (re)write one day's article |
 
 ## Layout
@@ -94,6 +95,8 @@ src/articles.js      the article pipeline and its checks
 src/dip.js           DIP client, decision extraction, sync
 src/protocol.js      vote formulas from the plenary protocol
 src/programs.js      PDF import, passages
+src/program-sources.js  the standard library: official PDF addresses
+src/default-library.js  downloads, checks and imports the standard library
 src/retrieval.js     full-text + vector retrieval, library search
 src/claude.js        Claude calls (structured output, fallbacks)
 src/newsletter.js    daily email, sent at most once per person

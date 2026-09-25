@@ -243,6 +243,8 @@ describe('the website', () => {
     assert.equal(page.status, 200);
     assert.match(page.text, /Sitzungstage/);
     assert.match(page.text, /PGlite/);
+    assert.match(page.text, /Standard-Bibliothek/);
+    assert.match(page.text, /Zeit für Deutschland<\/td>\s*<td><span class="chip warn">noch nicht geladen/);
 
     assert.equal((await admin.post('/admin/artikel', { date: 'gestern' })).status, 400);
 

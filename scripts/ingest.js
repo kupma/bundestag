@@ -1,6 +1,8 @@
 // Import an election programme from the command line, e.g. against the
 // Railway database with `railway run npm run ingest -- …`:
 //
+//   npm run ingest -- --defaults     all standard programmes (see src/program-sources.js)
+//
 //   npm run ingest -- --party "SPD" --title "Regierungsprogramm 2025" \
 //     --election "Bundestagswahl 2025" --url https://example.org/programm.pdf
 //
@@ -13,6 +15,7 @@
 
 import fs from 'node:fs/promises';
 import { buildContext } from '../src/context.js';
+import { importDefaultPrograms } from '../src/default-library.js';
 import { createProgram, downloadPdf, ingestProgramPdf, validateProgramMeta } from '../src/programs.js';
 
 function args(argv) {
@@ -24,6 +27,22 @@ function args(argv) {
 }
 
 const a = args(process.argv.slice(2));
+
+// The standard library: every Bundestag party's programme and the coalition
+// agreement, downloaded from the official sites and checked.
+if (a.defaults) {
+  const ctx = await buildContext();
+  try {
+    const report = await importDefaultPrograms(ctx, { force: true });
+    console.log(`Importiert: ${report.imported.join(', ') || '–'}`);
+    for (const f of report.failed) console.log(`Fehlgeschlagen: ${f.key} – ${f.error}`);
+    if (report.failed.length) process.exitCode = 1;
+  } finally {
+    await ctx.db.close();
+  }
+  process.exit();
+}
+
 const { errors, meta } = validateProgramMeta({ party: a.party, title: a.title, kind: a.kind, election: a.election, sourceUrl: a.url });
 if (!a.file && !meta.sourceUrl) errors.push('--url oder --file angeben.');
 if (errors.length) {

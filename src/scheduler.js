@@ -1,10 +1,12 @@
-// The clock. Every quarter of an hour: fetch new decisions from DIP (at most
-// hourly), write the article for one finished sitting day, and send the
-// newsletter for articles that have not gone out yet. Each step is idempotent,
+// The clock. Every quarter of an hour: import any standard programme that is
+// still missing, fetch new decisions from DIP (at most hourly), write the
+// article for one finished sitting day, and send the newsletter for articles
+// that have not gone out yet. Each step is idempotent,
 // so a tick that runs twice, late, or on two replicas at once does no harm;
 // the advisory lock just saves the second one the work.
 
 import { generateArticle, pendingDates, readyPrograms } from './articles.js';
+import { importDefaultPrograms } from './default-library.js';
 import { syncDecisions } from './dip.js';
 import { recentFailures, runJob } from './jobs.js';
 import { mailArticle } from './newsletter.js';
@@ -20,10 +22,17 @@ const state = { lastSync: 0 };
 export async function tick(ctx, { now = new Date(), forceSync = false } = {}) {
   const { db, config } = ctx;
   const outcome = await db.tryLock(TICK_LOCK, async () => {
-    const report = { sync: null, generated: [], mailed: [], notes: [] };
+    const report = { sync: null, library: null, generated: [], mailed: [], notes: [] };
     const today = berlinDate(now);
     const from = addDays(today, -config.lookbackDays);
     const hour = berlinHour(now);
+
+    // 0. the standard library – a no-op once everything is imported
+    if (config.defaultLibrary) {
+      const lib = await importDefaultPrograms(ctx, ctx.librarySources ? { sources: ctx.librarySources } : {});
+      if (lib.imported.length || lib.failed.length) report.library = lib;
+      for (const f of lib.failed) report.notes.push(`Bibliothek ${f.key}: ${f.error}`);
+    }
 
     // 1. new decisions
     if (!ctx.dip) report.notes.push('DIP_API_KEY fehlt – keine Beschlüsse abrufbar.');

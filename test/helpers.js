@@ -9,7 +9,9 @@ import { loadConfig } from '../src/config.js';
 import { migrate, openDatabase } from '../src/db.js';
 
 export function makeConfig(overrides = {}) {
-  const config = loadConfig({ PGLITE_DIR: 'memory://', BASE_URL: 'http://localhost:3999', SCHEDULER: 'off' });
+  // The standard library downloads from the parties' websites; tests that want
+  // it switch it back on with their own sources and a fake fetch.
+  const config = loadConfig({ PGLITE_DIR: 'memory://', BASE_URL: 'http://localhost:3999', SCHEDULER: 'off', DEFAULT_LIBRARY: 'off' });
   return { ...config, ...overrides };
 }
 

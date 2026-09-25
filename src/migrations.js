@@ -137,4 +137,13 @@ create table job_runs (
 create index job_runs_kind_idx on job_runs(kind, started_at);
 `,
   },
+  {
+    id: 2,
+    sql: `
+-- Programmes from the built-in standard library carry the key of their entry
+-- in src/program-sources.js, so the app knows which ones it already has.
+alter table programs add column source_key text;
+create unique index programs_source_key_idx on programs(source_key) where source_key is not null;
+`,
+  },
 ];

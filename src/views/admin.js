@@ -48,6 +48,24 @@ export function adminPage(view, d) {
 
   <section class="admin-block">
     <h2>Bibliothek</h2>
+    <h3>Standard-Bibliothek</h3>
+    <p class="meta">Die Wahlprogramme aller Bundestagsparteien und der Koalitionsvertrag werden automatisch von den offiziellen Seiten geladen und geprüft – beim ersten Durchlauf nach dem Start und danach für alles, was noch fehlt.${config.defaultLibrary ? '' : ' (Zurzeit abgeschaltet: DEFAULT_LIBRARY=off.)'}</p>
+    <table><thead><tr><th>Partei</th><th>Dokument</th><th>Status</th><th>Quelle</th></tr></thead><tbody>${d.standard.map(
+      (s) => html`<tr>
+        <td>${s.party}</td>
+        <td>${s.program && s.program.status === 'ready' ? html`<a href="/programme/${s.program.slug}">${s.title}</a>` : s.title}</td>
+        <td>${!s.program
+          ? html`<span class="chip warn">noch nicht geladen</span>`
+          : s.program.status === 'ready'
+            ? html`<span class="chip ok">bereit, ${s.program.page_count} Seiten</span>`
+            : s.program.status === 'error'
+              ? html`<span class="chip warn">Fehler</span> <span class="meta">${truncate(s.program.error || '', 140)}</span>`
+              : html`<span class="chip">wird verarbeitet</span>`}</td>
+        <td>${s.program && s.program.source_url ? html`<a href="${s.program.source_url}" target="_blank" rel="noopener">PDF ↗</a>` : ''}</td>
+      </tr>`,
+    )}</tbody></table>
+    <form method="post" action="/admin/programme/standard"><button type="submit" class="secondary">Fehlende jetzt laden</button></form>
+    <h3>Weiteres Dokument hinzufügen</h3>
     <p class="meta">Wahlprogramme als PDF, am besten direkt von der Website der Partei. Die Quelladresse wird für die Links „Original-PDF, Seite …“ gebraucht – auch beim Hochladen bitte angeben.</p>
     <div class="admin-actions">
       <form method="post" action="/admin/programme" class="stack" id="program-form">

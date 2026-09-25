@@ -28,6 +28,7 @@ import {
   validateRegistration,
   verifyPassword,
 } from './auth.js';
+import { importDefaultPrograms, libraryStatus } from './default-library.js';
 import { runJob, recentJobs } from './jobs.js';
 import { mailArticle } from './newsletter.js';
 import { createProgram, downloadPdf, ingestProgramPdf, validateProgramMeta } from './programs.js';
@@ -551,6 +552,7 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
         days,
         comments,
         jobs: await recentJobs(db, 30),
+        standard: await libraryStatus(db),
         suggestedDate: days.find((d) => !d.slug)?.sitting_date || addDays(today, -1),
       }),
     );
@@ -627,6 +629,12 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
     },
     { raw: PDF_LIMIT },
   );
+
+  route('POST', '/admin/programme/standard', async (c) => {
+    if (!requireAdmin(c)) return;
+    background('bibliothek', () => importDefaultPrograms(ctx, { force: true }));
+    c.redirect('/admin?ok=import');
+  });
 
   route('POST', '/admin/programme/:id/loeschen', async (c) => {
     if (!requireAdmin(c)) return;
