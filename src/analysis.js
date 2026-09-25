@@ -1,0 +1,57 @@
+const normalize = (text) =>
+  text
+    .toLowerCase()
+    .replace(/[^a-z0-9äöüß\s]/gi, " ")
+    .split(/\s+/)
+    .filter((token) => token.length > 2);
+
+const keywordSet = (text) => new Set(normalize(text));
+const tieBreakCollator = new Intl.Collator("de-DE", { sensitivity: "base" });
+
+const overlap = (left, right) => {
+  if (left.size === 0 || right.size === 0) {
+    return 0;
+  }
+
+  let shared = 0;
+  for (const token of left) {
+    if (right.has(token)) {
+      shared += 1;
+    }
+  }
+
+  return shared / Math.max(left.size, right.size);
+};
+
+export const computeDivergence = (decisions, brochureTopics) => {
+  return decisions.map((decision) => {
+    const decisionKeywords = keywordSet(`${decision.topic} ${decision.summary}`);
+
+    let bestTopic = null;
+    let bestAlignment = -1;
+
+    for (const topic of brochureTopics) {
+      const topicKeywords = keywordSet(`${topic.topic} ${topic.position}`);
+      const alignment = overlap(decisionKeywords, topicKeywords);
+      if (
+        alignment > bestAlignment ||
+        (alignment > 0 &&
+          alignment === bestAlignment &&
+          bestTopic &&
+          tieBreakCollator.compare(topic.topic, bestTopic.topic) < 0)
+      ) {
+        bestAlignment = alignment;
+        bestTopic = topic;
+      }
+    }
+
+    const divergence = bestTopic ? Number((1 - bestAlignment).toFixed(2)) : 1;
+
+    return {
+      decisionId: decision.id,
+      decisionTopic: decision.topic,
+      closestBrochureTopic: bestTopic?.topic ?? "No related topic",
+      divergence,
+    };
+  });
+};
