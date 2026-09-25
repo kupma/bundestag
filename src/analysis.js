@@ -35,7 +35,8 @@ export const computeDivergence = (decisions, brochureTopics) => {
       const alignment = overlap(decisionKeywords, topicKeywords);
       if (
         alignment > bestAlignment ||
-        (alignment === bestAlignment &&
+        (alignment > 0 &&
+          alignment === bestAlignment &&
           bestTopic &&
           tieBreakCollator.compare(topic.topic, bestTopic.topic) < 0)
       ) {
