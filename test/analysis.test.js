@@ -31,6 +31,17 @@ test("computeDivergence still returns a closest topic when overlap is zero", () 
   ];
 
   const result = computeDivergence(decisions, topics);
-  assert.equal(result[0].closestBrochureTopic, "Transport");
+  assert.equal(result[0].closestBrochureTopic, "Education");
   assert.equal(result[0].divergence, 1);
+});
+
+test("computeDivergence uses alphabetical tie-break for equal alignment", () => {
+  const decisions = [{ id: "1", topic: "Energy", summary: "Solar expansion targets" }];
+  const topics = [
+    { party: "X", topic: "Wind policy", position: "Solar expansion goals" },
+    { party: "Y", topic: "Climate policy", position: "Solar expansion goals" },
+  ];
+
+  const result = computeDivergence(decisions, topics);
+  assert.equal(result[0].closestBrochureTopic, "Climate policy");
 });

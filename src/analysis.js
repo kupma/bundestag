@@ -32,7 +32,12 @@ export const computeDivergence = (decisions, brochureTopics) => {
     for (const topic of brochureTopics) {
       const topicKeywords = keywordSet(`${topic.topic} ${topic.position}`);
       const alignment = overlap(decisionKeywords, topicKeywords);
-      if (alignment > bestAlignment) {
+      if (
+        alignment > bestAlignment ||
+        (alignment === bestAlignment &&
+          bestTopic &&
+          topic.topic.localeCompare(bestTopic.topic) < 0)
+      ) {
         bestAlignment = alignment;
         bestTopic = topic;
       }
