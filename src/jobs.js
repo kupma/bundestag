@@ -20,9 +20,15 @@ export async function runJob(db, kind, fn) {
   }
 }
 
+// Failed runs, and runs that never finished. Callers ask before starting a
+// run of the same kind, which never overlaps with itself, so an unfinished
+// run here is one whose process died – for example when a large PDF took the
+// memory with it. Counting those stops a crash from repeating on every
+// restart.
 export async function recentFailures(db, kind, hours) {
   const row = await db.one(
-    `select count(*)::int as n from job_runs where kind = $1 and ok = false and started_at > now() - ($2 || ' hours')::interval`,
+    `select count(*)::int as n from job_runs
+      where kind = $1 and ok is distinct from true and started_at > now() - ($2 || ' hours')::interval`,
     [kind, String(hours)],
   );
   return row.n;

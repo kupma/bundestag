@@ -125,6 +125,16 @@ test('after three failures in a day it waits – unless forced', async () => {
   await ctx.db.close();
 });
 
+test('imports that died with the process count as failures, so a crash cannot loop', async () => {
+  const { ctx, web } = await setup({ 'https://www.spd.de/alt.pdf': await makePdf([PAGE, PAGE, PAGE]) });
+  // Three earlier attempts that never finished: the process died each time.
+  for (let i = 0; i < 3; i++) await ctx.db.query(`insert into job_runs (kind) values ('programm:test-spd')`);
+  const report = await importDefaultPrograms(ctx, { sources: [source()] });
+  assert.deepEqual(report.skipped, ['test-spd']);
+  assert.equal(web.calls.length, 0, 'no fourth attempt today');
+  await ctx.db.close();
+});
+
 test('a failed import is retried into the same row and shows in the status', async () => {
   const { ctx } = await setup({ 'https://www.spd.de/alt.pdf': await makePdf([PAGE, PAGE, PAGE]) });
   // A row left in "error" by an earlier attempt (e.g. the process died mid-import).
