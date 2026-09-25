@@ -22,3 +22,15 @@ test("computeDivergence handles empty brochure topics", () => {
   assert.equal(result[0].closestBrochureTopic, "No related topic");
   assert.equal(result[0].divergence, 1);
 });
+
+test("computeDivergence still returns a closest topic when overlap is zero", () => {
+  const decisions = [{ id: "1", topic: "Tax", summary: "Corporate deduction changes" }];
+  const topics = [
+    { party: "X", topic: "Transport", position: "Rail infrastructure financing" },
+    { party: "Y", topic: "Education", position: "School staffing targets" },
+  ];
+
+  const result = computeDivergence(decisions, topics);
+  assert.equal(result[0].closestBrochureTopic, "Transport");
+  assert.equal(result[0].divergence, 1);
+});

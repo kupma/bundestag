@@ -26,7 +26,7 @@ export const computeDivergence = (decisions, brochureTopics) => {
   return decisions.map((decision) => {
     const decisionKeywords = keywordSet(`${decision.topic} ${decision.summary}`);
 
-    let bestTopic = null;
+    let bestTopic = brochureTopics[0] ?? null;
     let bestAlignment = 0;
 
     for (const topic of brochureTopics) {

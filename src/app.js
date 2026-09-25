@@ -18,7 +18,16 @@ const renderAnalysis = (rows) => {
   analysisRows.innerHTML = "";
   for (const row of rows) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${row.decisionTopic}</td><td>${row.closestBrochureTopic}</td><td>${row.divergence}</td>`;
+    const decisionCell = document.createElement("td");
+    decisionCell.textContent = row.decisionTopic;
+
+    const topicCell = document.createElement("td");
+    topicCell.textContent = row.closestBrochureTopic;
+
+    const divergenceCell = document.createElement("td");
+    divergenceCell.textContent = String(row.divergence);
+
+    tr.append(decisionCell, topicCell, divergenceCell);
     analysisRows.appendChild(tr);
   }
 };
@@ -32,6 +41,9 @@ const loadJson = async (path) => {
 };
 
 const bootstrap = async () => {
+  status.setAttribute("role", "status");
+  status.setAttribute("aria-live", "polite");
+  status.removeAttribute("aria-invalid");
   status.textContent = "Loading latest data…";
   try {
     const [plenums, brochures] = await Promise.all([
@@ -49,8 +61,14 @@ const bootstrap = async () => {
     const analysis = computeDivergence(plenums.decisions, brochures.topics);
     renderAnalysis(analysis);
 
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    status.removeAttribute("aria-invalid");
     status.textContent = `Loaded ${plenums.decisions.length} decisions and ${brochures.topics.length} brochure topics.`;
   } catch (error) {
+    status.setAttribute("role", "alert");
+    status.setAttribute("aria-live", "assertive");
+    status.setAttribute("aria-invalid", "true");
     status.textContent = `Could not load data: ${error.message}`;
   }
 };
