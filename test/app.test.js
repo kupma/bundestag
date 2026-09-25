@@ -41,10 +41,17 @@ describe('the website', () => {
     const home = await b.get('/');
     assert.equal(home.status, 200);
     assert.match(home.text, /Versprochen &amp; Beschlossen/);
-    assert.match(home.text, /Noch kein Artikel/);
+    assert.match(home.text, /Noch kein Sitzungstag/);
+    assert.match(home.text, /Selbst etwas bewegen/);
+    assert.match(home.text, /<link rel="stylesheet" href="\/static\/styles\.css\?v=[0-9a-f]{10}">/);
     assert.match(home.headers.get('content-security-policy'), /default-src 'self'/);
     assert.equal(home.headers.get('x-frame-options'), 'DENY');
     assert.equal((await b.get('/static/styles.css')).status, 200);
+    const font = await b.get('/static/fonts/figtree.woff2');
+    assert.equal(font.status, 200);
+    assert.equal(font.headers.get('content-type'), 'font/woff2');
+    assert.match(font.headers.get('cache-control'), /max-age=31536000/);
+    assert.equal((await b.get('/static/fonts/../../server.js')).status, 404);
     assert.equal((await b.get('/static/../server.js')).status, 404);
     assert.equal((await b.get('/static/%2e%2e%2fserver.js')).status, 404);
     assert.equal((await b.get('/healthz')).text, 'ok');
@@ -95,7 +102,7 @@ describe('the website', () => {
     const page = await b.get('/artikel/2026-09-24');
     assert.match(page.text, /Guter Artikel\. &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
     assert.doesNotMatch(page.text, /<script>alert/);
-    assert.match(page.text, /Kommentare \(1\)/);
+    assert.match(page.text, /1 Kommentar</);
 
     const commentId = Number(posted.location.split('-').pop());
     const other = browser(app.base);
@@ -112,8 +119,14 @@ describe('the website', () => {
     assert.equal(page.status, 200);
     assert.match(page.text, /Mietpreisbremse bleibt – wie versprochen\?/);
     assert.match(page.text, /Entspricht dem Programm/);
-    assert.match(page.text, /Fraktion: Ja/);
-    assert.match(page.text, /href="\/stelle\/\d+">Wahlprogramm SPD, PDF-S\. 2<\/a>/);
+    assert.match(page.text, /Fraktion stimmte mit Ja/);
+    assert.match(page.text, /href="\/stelle\/\d+">Wahlprogramm SPD, PDF-Seite 2<\/a>/);
+    assert.match(page.text, /Auf einen Blick/);
+    assert.match(page.text, /aria-label="SPD: (Entspricht|Widerspricht|Teilweise|Im Programm)/);
+    assert.match(page.text, /Gemeinsamkeiten/);
+    assert.match(page.text, /Was du tun kannst/);
+    assert.match(page.text, /href="https:\/\/www\.mieterbund\.de" target="_blank" rel="noopener">Mietervereine vor Ort/);
+    assert.doesNotMatch(page.text, /erfunden/);
     assert.match(page.text, /href="https:\/\/example\.org\/p\.pdf#page=2"/);
     assert.match(page.text, /Weitere Beschlüsse des Tages/);
     assert.match(page.text, /Plenarprotokoll 21\/45/);
@@ -130,6 +143,18 @@ describe('the website', () => {
 
     const archive = await b.get('/archiv');
     assert.match(archive.text, /Donnerstag, 24\. September 2026/);
+  });
+
+  test('the Mitmachen page lists every theme with working anchors', async () => {
+    const res = await browser(app.base).get('/mitmachen');
+    assert.equal(res.status, 200);
+    for (const id of ['gelassen', 'einkaufen', 'demokratie', 'miteinander']) {
+      assert.match(res.text, new RegExp(`<section class="theme" id="${id}">`));
+      assert.match(res.text, new RegExp(`href="#${id}"`));
+    }
+    assert.match(res.text, /Weniger wegwerfen/);
+    assert.match(res.text, /href="https:\/\/epetitionen\.bundestag\.de" target="_blank" rel="noopener">Petition an den Bundestag/);
+    assert.match(res.text, /aria-current="page">Mitmachen</);
   });
 
   test('library search marks hits and escapes everything else', async () => {

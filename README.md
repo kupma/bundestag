@@ -4,6 +4,8 @@ What the Bundestag decides, and what the parties promised beforehand.
 
 After every sitting day of the German Bundestag, this site publishes an article that goes through the day's decisions and compares each one with the parties' election programmes (and the coalition agreement). The comparison covers how each parliamentary group voted and whether the decision matches, partly matches or contradicts its programme. Every verdict links to the page in the programme PDF where the promise is written. Readers can register, comment on the articles, and get each article by email.
 
+The site is also meant to leave people calmer and more capable, not more agitated. Every article ends each decision with **"Was du tun kannst"**, a few small steps at three levels: for yourself, with others, and in politics. It also says where the parliamentary groups agreed (**"Gemeinsamkeiten"**). The **/mitmachen** page collects practical, non-partisan ways to contribute: staying calmly informed, shopping with impact, everyday democracy, and community.
+
 The site itself is in German. Code and docs are in English.
 
 ## How an article is made
@@ -28,6 +30,14 @@ Programme PDFs ──► page-exact passages ──► German full-text index (+
 - **The library** splits each PDF into passages of about 900 characters. A passage never crosses a page, so every citation has an exact page number and a link `…pdf#page=N`. Search uses Postgres full-text search with the German stemmer. With `VOYAGE_API_KEY` set, it also uses vector similarity, fused with reciprocal rank fusion.
 - **Claude** (`claude-opus-5`, adaptive thinking, structured outputs) is called roughly `2 + number of decisions` times per article. Requests opt into server-side refusal fallbacks (`fallbacks: "default"`), because parliamentary topics such as defence and extremism can trip a safety classifier.
 - **Timing:** a built-in clock ticks every 15 minutes. It fetches DIP hourly, never writes about the current day, and writes an article only once a sitting day's DIP data has stopped changing for 12 hours. It stays quiet before 06:00 Berlin time and gives up on a date after 3 failures in 24 hours. Emails go out between 06:00 and 21:00.
+
+## Design
+
+- **Politically neutral colour.** Warm paper and stone tones with a charcoal ink. Almost every hue is claimed by some party in Germany (black, red, green, yellow, blue, purple, magenta, orange, turquoise), so the site uses none of them. Party colours appear only as a small identification dot, the same size for every party. Parties are listed alphabetically.
+- **Shapes instead of colours.** Two circles stand for "versprochen" (left) and "beschlossen" (right). Their overlap is the verdict: nearly one circle = *entspricht*, half overlapping = *teilweise*, apart = *widerspricht*, a dashed empty circle = *nicht thematisiert*. The same two circles are the logo. A verdict never depends on colour alone, which also works in greyscale, for colour-blind readers, and in dark mode.
+- **Calm by default.** Soft rounded shapes, generous whitespace, sentence case, no alarm colours. Results use shape too: adopted = filled pill, rejected = outlined, settled = dashed.
+- **Type.** [Fraunces](https://github.com/undercasetype/Fraunces) (soft axis) for headings and [Figtree](https://github.com/erikdkennedy/figtree) for text. Both are served from `static/fonts` under the SIL Open Font License, so nothing loads from Google.
+- **Only curated links.** "Was du tun kannst" may link only to entries in `src/resources.js`; the JSON schema Claude answers with enforces that. The /mitmachen content lives in `src/mitmachen.js`.
 
 ## Deploy on Railway
 
@@ -88,7 +98,11 @@ src/retrieval.js     full-text + vector retrieval, library search
 src/claude.js        Claude calls (structured output, fallbacks)
 src/newsletter.js    daily email, sent at most once per person
 src/scheduler.js     the 15-minute tick
+src/mitmachen.js     content of the /mitmachen page
+src/resources.js     the only links suggestions may point to
 src/views/           server-rendered pages (everything escaped by default)
+src/views/shapes.js  the two-circle shape language
+static/fonts/        self-hosted fonts (SIL OFL)
 test/                node:test suites with PGlite and fake Claude/DIP/mail
 ```
 

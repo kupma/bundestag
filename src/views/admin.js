@@ -1,7 +1,7 @@
 import { html } from '../html.js';
 import { KINDS } from '../programs.js';
 import { formatDateDe, formatDateTimeDe, truncate } from '../text.js';
-import { layout, notices } from './layout.js';
+import { ASSET_VERSION, layout, notices } from './layout.js';
 
 const yes = (ok, label) => html`<span class="chip ${ok ? 'ok' : 'warn'}">${ok ? '✓' : '✗'} ${label}</span>`;
 
@@ -113,6 +113,6 @@ export function adminPage(view, d) {
         )}</tbody></table>`
       : html`<p class="meta">Noch nichts gelaufen.</p>`}
   </section>
-  <script src="/static/admin.js" defer></script>`;
+  <script src="/static/admin.js?v=${ASSET_VERSION.adminJs}" defer></script>`;
   return layout(view, { title: 'Admin', body, noindex: true });
 }

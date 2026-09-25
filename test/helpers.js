@@ -195,12 +195,24 @@ export function fakeClaude() {
           }
           return { program_id: p.id, vote: 'enthalten', alignment: 'entspricht', assessment: 'Behauptung ohne Beleg.', citations: [{ passage_id: 999999, quote: 'erfunden' }] };
         });
+        // Four suggestions, one with an unknown level and one with an unknown
+        // link: the checks keep three, drop the level, and unlink the link.
+        const actions = [
+          { level: 'alltag', text: 'Prüfe mit dem Mietspiegel, ob deine Miete zulässig ist.', resource: 'mieterbund' },
+          { level: 'politik', text: 'Frag deine Abgeordneten, wie es weitergeht.', resource: 'abgeordnete' },
+          { level: 'unsinn', text: 'Das hier fliegt raus.', resource: 'keine' },
+          { level: 'gemeinsam', text: 'Sprich mit deinen Nachbarn über ihre Erfahrungen.', resource: 'erfunden' },
+          { level: 'gemeinsam', text: 'Ein vierter Vorschlag ist einer zu viel.', resource: 'keine' },
+        ];
         return {
-          data: { headline: 'Mietpreisbremse verlängert', summary: 'Der Bundestag hat entschieden.', result: 'angenommen', votes_note: 'CDU/CSU und SPD dafür, AfD dagegen.', parties },
+          data: { headline: 'Mietpreisbremse verlängert', summary: 'Der Bundestag hat entschieden.', result: 'angenommen', votes_note: 'CDU/CSU und SPD dafür, AfD dagegen.', actions, parties },
           usage,
         };
       }
-      return { data: { title: 'Mietpreisbremse bleibt – wie versprochen?', lede: 'Ein Tag im Bundestag.', intro: ['Absatz eins.', 'Absatz zwei.'] }, usage };
+      return {
+        data: { title: 'Mietpreisbremse bleibt – wie versprochen?', lede: 'Ein Tag im Bundestag.', intro: ['Absatz eins.', 'Absatz zwei.'], common_ground: 'Beim Mieterschutz stimmte eine breite Mehrheit zu.' },
+        usage,
+      };
     },
   };
 }

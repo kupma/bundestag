@@ -41,8 +41,16 @@ test('generateArticle writes a checked, structured article', async () => {
   assert.match(body.others[0].title, /Sammelübersicht/);
   assert.deepEqual(body.intro, ['Absatz eins.', 'Absatz zwei.']);
 
+  assert.equal(body.commonGround, 'Beim Mieterschutz stimmte eine breite Mehrheit zu.');
+
   const bill = body.decisions.find((d) => d.title.includes('Mietpreisbremse'));
   assert.equal(bill.votesNote, 'CDU/CSU und SPD dafür, AfD dagegen.');
+  // Suggestions: at most three, known levels only, links only from the curated list.
+  assert.deepEqual(bill.actions, [
+    { level: 'alltag', text: 'Prüfe mit dem Mietspiegel, ob deine Miete zulässig ist.', resource: 'mieterbund' },
+    { level: 'politik', text: 'Frag deine Abgeordneten, wie es weitergeht.', resource: 'abgeordnete' },
+    { level: 'gemeinsam', text: 'Sprich mit deinen Nachbarn über ihre Erfahrungen.', resource: null },
+  ]);
   assert.ok(bill.sources.some((s) => s.label === 'Plenarprotokoll 21/45'));
   assert.ok(bill.sources.some((s) => s.label.startsWith('Drucksache 21/1234')));
   assert.equal(bill.parties.length, 4, 'every programme appears once');
@@ -142,6 +150,10 @@ test('newsletter goes to confirmed subscribers only, and only once', async () =>
   assert.match(letter.text, /http:\/\/localhost:3999\/artikel\/2026-09-24/);
   assert.match(letter.unsubscribeUrl, /\/newsletter\/abmelden\?t=yes%40example\.de$/);
   assert.doesNotMatch(letter.html, /<script/);
+  assert.match(letter.text, /Gemeinsamkeiten: Beim Mieterschutz/);
+  assert.match(letter.text, /Was du tun kannst:\n– Prüfe mit dem Mietspiegel/);
+  assert.match(letter.text, /Mietervereine vor Ort: https:\/\/www\.mieterbund\.de/);
+  assert.match(letter.html, /Was du tun kannst/);
 
   assert.deepEqual(await mailArticle(ctx, articleId, { pauseMs: 0 }), { sent: 0, failed: 0 });
   assert.equal(ctx.mailer.sent.length, 1);

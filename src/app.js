@@ -48,10 +48,10 @@ import {
 } from './views/account.js';
 import { adminPage } from './views/admin.js';
 import { libraryPage, passagePage, programPage } from './views/library.js';
-import { aboutPage, archivePage, articlePage, errorPage, homePage, imprintPage, privacyPage, rssFeed } from './views/public.js';
+import { aboutPage, archivePage, articlePage, errorPage, homePage, imprintPage, mitmachenPage, privacyPage, rssFeed } from './views/public.js';
 
 const STATIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'static');
-const MIME = { '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.txt': 'text/plain; charset=utf-8' };
+const MIME = { '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.txt': 'text/plain; charset=utf-8', '.woff2': 'font/woff2' };
 const FORM_LIMIT = 100 * 1024;
 const PDF_LIMIT = 80 * 1024 * 1024;
 
@@ -215,9 +215,14 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
 
   route('GET', '/', async (c) => {
     const { rows } = await db.query(`${ARTICLE_LIST} limit 11`);
+    const latest = rows.length
+      ? { ...rows[0], body: (await db.one('select body from articles where id = $1', [rows[0].id])).body }
+      : null;
     const programs = await db.one(`select count(*)::int as n from programs where status = 'ready'`);
-    c.html(homePage(c.view, { articles: rows, programCount: programs.n }));
+    c.html(homePage(c.view, { latest, articles: rows, programCount: programs.n }));
   });
+
+  route('GET', '/mitmachen', async (c) => c.html(mitmachenPage(c.view)));
 
   route('GET', '/archiv', async (c) => {
     const { rows } = await db.query(`${ARTICLE_LIST} limit 1000`);
@@ -632,12 +637,15 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
   // --- the request loop ---------------------------------------------------------------
 
   async function serveStatic(res, name) {
-    if (!/^[a-z0-9][a-z0-9._-]*$/i.test(name)) return false;
+    if (!/^(?:fonts\/)?[a-z0-9][a-z0-9._-]*$/i.test(name)) return false;
     const type = MIME[path.extname(name).toLowerCase()];
     if (!type) return false;
     try {
       const data = await fs.readFile(path.join(STATIC_DIR, name));
-      res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
+      // Fonts never change under the same name; the stylesheet's URL carries a
+      // content hash (see views/layout.js), everything else is cached briefly.
+      const maxAge = name.startsWith('fonts/') ? 31536000 : 3600;
+      res.writeHead(200, { 'Content-Type': type, 'Cache-Control': `public, max-age=${maxAge}`, 'X-Content-Type-Options': 'nosniff' });
       res.end(data);
       return true;
     } catch {

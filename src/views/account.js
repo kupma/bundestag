@@ -8,7 +8,7 @@ export function loginPage(view, { email = '', next = '', error = '', notice = ''
   const body = html`<section class="form-page">
     <h1>Anmelden</h1>
     ${notices({ error, notice })}
-    <form method="post" action="/anmelden">
+    <form class="form-card" method="post" action="/anmelden">
       ${hiddenNext(next)}
       <label for="email">E-Mail-Adresse</label>
       <input id="email" name="email" type="email" autocomplete="email" required value="${email}">
@@ -26,7 +26,7 @@ export function registerPage(view, { values = {}, errors = [], next = '' } = {})
     <h1>Registrieren</h1>
     <p>Mit einem Konto kannst du die Artikel kommentieren und den täglichen Newsletter bekommen.</p>
     ${notices({ errors })}
-    <form method="post" action="/registrieren">
+    <form class="form-card" method="post" action="/registrieren">
       ${hiddenNext(next)}
       <label for="display_name">Anzeigename <span class="meta">(öffentlich sichtbar bei Kommentaren)</span></label>
       <input id="display_name" name="display_name" required minlength="2" maxlength="40" value="${values.display_name || ''}" autocomplete="nickname">
@@ -57,7 +57,7 @@ export function accountPage(view, { notice = '', error = '', mailConfigured, com
       : ''}
     <h2>Newsletter</h2>
     ${mailConfigured
-      ? html`<form method="post" action="/konto/newsletter">
+      ? html`<form class="form-card" method="post" action="/konto/newsletter">
           <label class="check"><input type="checkbox" name="newsletter" value="1"${u.newsletter ? html` checked` : ''}> Artikel nach jedem Sitzungstag per E-Mail erhalten</label>
           ${u.newsletter && !u.email_verified_at ? html`<p class="meta">Der Versand beginnt, sobald deine E-Mail-Adresse bestätigt ist.</p>` : ''}
           <button type="submit" class="secondary">Speichern</button>
@@ -87,7 +87,7 @@ export function forgotPage(view, { notice = '', error = '' } = {}) {
     <h1>Passwort vergessen</h1>
     ${notices({ notice, error })}
     ${view.mailConfigured
-      ? html`<form method="post" action="/passwort-vergessen">
+      ? html`<form class="form-card" method="post" action="/passwort-vergessen">
           <label for="email">E-Mail-Adresse deines Kontos</label>
           <input id="email" name="email" type="email" required autocomplete="email">
           <button type="submit">Link zum Zurücksetzen senden</button>
@@ -101,7 +101,7 @@ export function resetPage(view, { token, errors = [] }) {
   const body = html`<section class="form-page">
     <h1>Neues Passwort</h1>
     ${notices({ errors })}
-    <form method="post" action="/passwort-neu">
+    <form class="form-card" method="post" action="/passwort-neu">
       <input type="hidden" name="token" value="${token}">
       <label for="password">Neues Passwort <span class="meta">(mindestens 10 Zeichen)</span></label>
       <input id="password" name="password" type="password" required minlength="10" autocomplete="new-password">

@@ -19,7 +19,7 @@ function results(q, hits, { showProgram = true } = {}) {
   if (!hits.length) return html`<p class="meta">Keine Passage gefunden für „${q}“.</p>`;
   return html`<ol class="hits">${hits.map(
     (h) => html`<li class="hit ${partyClass(h.party)}">
-      <p class="hit-meta">${showProgram ? html`<span class="dot" aria-hidden="true"></span><strong>${h.party}</strong> · ${h.title} · ` : ''}PDF-S. ${h.page}</p>
+      <p class="hit-meta">${showProgram ? html`<span class="dot" aria-hidden="true"></span><strong>${h.party}</strong> · ${h.title} · ` : ''}PDF-Seite ${h.page}</p>
       <p>${snippet(h.snippet)}</p>
       <p class="cite-links"><a href="/stelle/${h.id}">Passage ansehen</a>${h.source_url ? html` · <a href="${pdfPageUrl(h.source_url, h.page)}" target="_blank" rel="noopener">Original-PDF ↗</a>` : ''}</p>
     </li>`,
@@ -28,7 +28,7 @@ function results(q, hits, { showProgram = true } = {}) {
 
 export function libraryPage(view, { programs, q, hits }) {
   const body = html`<h1>Bibliothek</h1>
-  <p class="lede">Die Wahlprogramme, mit denen wir die Beschlüsse abgleichen – durchsuchbar, mit Seitenangabe und Link zum Original.</p>
+  <p class="lede">Die Wahlprogramme, mit denen wir die Beschlüsse abgleichen – durchsuchbar, mit Seitenangabe und Link zum Original. So kannst du selbst nachlesen, was versprochen wurde.</p>
   ${searchForm(q, '/programme', 'z. B. Mietpreisbremse, Wehrpflicht, Bürgergeld')}
   ${results(q, hits)}
   <h2 class="section-title">Dokumente</h2>
@@ -43,8 +43,8 @@ export function libraryPage(view, { programs, q, hits }) {
 }
 
 export function programPage(view, { program, q, hits, cited }) {
-  const body = html`<p class="kicker"><a href="/programme">Bibliothek</a></p>
-  <h1 class="${partyClass(program.party)}"><span class="dot big" aria-hidden="true"></span>${program.party}: ${program.title}</h1>
+  const body = html`<p class="eyebrow"><a href="/programme">Bibliothek</a></p>
+  <h1>${program.party}: ${program.title}</h1>
   <p class="meta">${KINDS[program.kind]}${program.election ? ` · ${program.election}` : ''} · ${program.page_count} Seiten · ${program.chunk_count} Passagen${
     program.source_url ? html` · <a href="${program.source_url}" target="_blank" rel="noopener">Original-PDF ↗</a>` : ''
   }</p>
@@ -52,7 +52,7 @@ export function programPage(view, { program, q, hits, cited }) {
   ${results(q, hits, { showProgram: false })}
   ${!q && cited.length
     ? html`<h2 class="section-title">Zuletzt zitiert</h2><ul class="archive-list">${cited.map(
-        (c) => html`<li><a href="/stelle/${c.chunk_id}">PDF-S. ${c.page}</a> in <a href="/artikel/${c.slug}">${c.title}</a> <span class="meta">(${formatDateDe(c.sitting_date, { weekday: false })})</span></li>`,
+        (c) => html`<li><a href="/stelle/${c.chunk_id}">PDF-Seite ${c.page}</a> in <a href="/artikel/${c.slug}">${c.title}</a> <span class="meta">(${formatDateDe(c.sitting_date, { weekday: false })})</span></li>`,
       )}</ul>`
     : ''}`;
   return layout(view, { title: `${program.party}: ${program.title}`, body, canonical: `/programme/${program.slug}`, noindex: !!q });
@@ -60,8 +60,8 @@ export function programPage(view, { program, q, hits, cited }) {
 
 export function passagePage(view, { passage, prev, next, citedIn }) {
   const p = passage;
-  const body = html`<p class="kicker"><a href="/programme">Bibliothek</a> › <a href="/programme/${p.slug}">${p.party}: ${p.title}</a></p>
-  <h1 class="${partyClass(p.party)}"><span class="dot big" aria-hidden="true"></span>${KINDS[p.kind]} ${p.party}, PDF-Seite ${p.page}</h1>
+  const body = html`<p class="eyebrow"><a href="/programme">Bibliothek</a> › <a href="/programme/${p.slug}">${p.party}: ${p.title}</a></p>
+  <h1>${KINDS[p.kind]} ${p.party}, PDF-Seite ${p.page}</h1>
   <blockquote class="passage">${p.text.split(/\n{2,}/).map((para) => html`<p>${para}</p>`)}</blockquote>
   <p class="cite-links">${p.source_url ? html`<a class="button" href="${pdfPageUrl(p.source_url, p.page)}" target="_blank" rel="noopener">Im Original-PDF auf Seite ${p.page} öffnen ↗</a>` : html`<span class="meta">Für dieses Dokument ist keine Originalquelle hinterlegt.</span>`}</p>
   <p class="pager">${prev ? html`<a href="/stelle/${prev.id}">← vorherige Passage</a>` : ''} ${next ? html`<a href="/stelle/${next.id}">nächste Passage →</a>` : ''}</p>
@@ -71,5 +71,5 @@ export function passagePage(view, { passage, prev, next, citedIn }) {
       )}</ul>`
     : ''}
   <p class="meta">Der Text wurde automatisch aus dem PDF gelesen; Silbentrennung und Spalten können vom Original abweichen. Maßgeblich ist das Original-PDF.</p>`;
-  return layout(view, { title: `${p.party}, PDF-S. ${p.page}`, body });
+  return layout(view, { title: `${p.party}, PDF-Seite ${p.page}`, body });
 }

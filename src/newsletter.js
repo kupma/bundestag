@@ -4,16 +4,37 @@
 // confirmed from the inbox first).
 
 import { escapeHtml } from './html.js';
+import { isExternal, LEVELS, RESOURCES } from './resources.js';
 import { formatDateDe } from './text.js';
 
 const RESULT = { angenommen: 'angenommen', abgelehnt: 'abgelehnt', erledigt: 'für erledigt erklärt', sonstiges: 'beschlossen' };
+
+// Same calm palette as the site: paper, stone, charcoal – no party colour.
+const C = { paper: '#f6f3ee', surface: '#fffdfa', stone: '#efebe4', ink: '#2b2926', ink2: '#57524b', ink3: '#807970', line: '#e2dcd2' };
+
+// Up to three suggestions for the whole day, one per decision first, so the
+// letter stays short.
+function pickActions(decisions) {
+  const firsts = decisions.map((d) => (d.actions || [])[0]).filter(Boolean);
+  const rest = decisions.flatMap((d) => (d.actions || []).slice(1));
+  return [...firsts, ...rest].slice(0, 3);
+}
+
+function resourceUrl(config, key) {
+  const r = RESOURCES[key];
+  if (!r) return null;
+  return { label: r.label, url: isExternal(r.url) ? r.url : `${config.baseUrl}${r.url}` };
+}
 
 export function composeLetter(config, article, user) {
   const url = `${config.baseUrl}/artikel/${article.slug}`;
   const unsubscribeUrl = `${config.baseUrl}/newsletter/abmelden?t=${encodeURIComponent(user.unsubscribe_token)}`;
   const body = article.body || {};
   const date = formatDateDe(article.sitting_date);
-  const items = (body.decisions || []).map((d) => ({ headline: d.headline, result: RESULT[d.result] || d.result, summary: d.summary }));
+  const decisions = body.decisions || [];
+  const items = decisions.map((d) => ({ headline: d.headline, result: RESULT[d.result] || d.result, summary: d.summary }));
+  const actions = pickActions(decisions).map((a) => ({ ...a, link: a.resource ? resourceUrl(config, a.resource) : null }));
+  const commonGround = String(body.commonGround || '');
 
   const text = [
     `${config.siteName} – Sitzung vom ${date}`,
@@ -22,27 +43,48 @@ export function composeLetter(config, article, user) {
     '',
     article.lede,
     '',
+    ...(commonGround ? [`Gemeinsamkeiten: ${commonGround}`, ''] : []),
     ...items.flatMap((i) => [`• ${i.headline} (${i.result})`, `  ${i.summary}`, '']),
-    `Ganzer Artikel mit Fundstellen und Kommentaren: ${url}`,
+    ...(actions.length
+      ? ['Was du tun kannst:', ...actions.map((a) => `– ${a.text}${a.link ? ` (${a.link.label}: ${a.link.url})` : ''}`), '']
+      : []),
+    `Ganzer Artikel mit Fundstellen und Diskussion: ${url}`,
     '',
     '—',
     `Du bekommst diese E-Mail, weil du den Newsletter von ${config.siteName} abonniert hast.`,
     `Abbestellen: ${unsubscribeUrl}`,
   ].join('\n');
 
-  const html = `<!doctype html><html lang="de"><body style="margin:0;background:#f6f5f1;font-family:Georgia,serif;color:#1c1c1c">
-<div style="max-width:620px;margin:0 auto;padding:24px 20px;background:#fff">
-<p style="font:13px/1.4 system-ui,sans-serif;color:#666;margin:0 0 16px">${escapeHtml(config.siteName)} · Sitzung vom ${escapeHtml(date)}</p>
-<h1 style="font-size:26px;line-height:1.2;margin:0 0 12px">${escapeHtml(article.title)}</h1>
-<p style="font-size:17px;line-height:1.5;margin:0 0 20px">${escapeHtml(article.lede)}</p>
+  const e = escapeHtml;
+  const sans = "font-family:Figtree,-apple-system,'Segoe UI',Roboto,Arial,sans-serif";
+  const serif = "font-family:Georgia,'Times New Roman',serif";
+  const html = `<!doctype html><html lang="de"><body style="margin:0;background:${C.paper};color:${C.ink};${sans}">
+<div style="max-width:600px;margin:0 auto;padding:28px 20px">
+<p style="font-size:13px;line-height:1.4;color:${C.ink3};margin:0 0 18px">${e(config.siteName)} · Sitzung vom ${e(date)}</p>
+<div style="background:${C.surface};border-radius:24px;padding:28px 26px">
+<h1 style="${serif};font-weight:600;font-size:26px;line-height:1.25;margin:0 0 12px;color:${C.ink}">${e(article.title)}</h1>
+<p style="font-size:17px;line-height:1.6;margin:0 0 8px;color:${C.ink2}">${e(article.lede)}</p>
+${commonGround ? `<div style="background:${C.stone};border-radius:16px;padding:14px 18px;margin:20px 0 4px"><p style="margin:0;font-size:15px;line-height:1.6"><strong>Gemeinsamkeiten.</strong> ${e(commonGround)}</p></div>` : ''}
 ${items
   .map(
-    (i) => `<h2 style="font-size:18px;margin:20px 0 4px">${escapeHtml(i.headline)} <span style="font:13px system-ui,sans-serif;color:#666">(${escapeHtml(i.result)})</span></h2>
-<p style="font-size:16px;line-height:1.5;margin:0">${escapeHtml(i.summary)}</p>`,
+    (i) => `<h2 style="${serif};font-weight:600;font-size:19px;line-height:1.3;margin:24px 0 4px;color:${C.ink}">${e(i.headline)}</h2>
+<p style="font-size:13px;color:${C.ink3};margin:0 0 6px">${e(i.result)}</p>
+<p style="font-size:16px;line-height:1.6;margin:0;color:${C.ink2}">${e(i.summary)}</p>`,
   )
   .join('\n')}
-<p style="margin:28px 0"><a href="${escapeHtml(url)}" style="background:#1d3557;color:#fff;padding:12px 18px;border-radius:6px;text-decoration:none;font:15px system-ui,sans-serif">Ganzer Artikel mit Fundstellen &amp; Kommentaren</a></p>
-<p style="font:12px/1.5 system-ui,sans-serif;color:#777;border-top:1px solid #ddd;padding-top:12px">Die Analysen werden mit KI (Claude) aus Bundestagsdokumenten und den Wahlprogrammen erstellt und automatisch auf wörtliche Zitate geprüft. Du bekommst diese E-Mail, weil du den Newsletter abonniert hast. <a href="${escapeHtml(unsubscribeUrl)}" style="color:#777">Abbestellen</a></p>
+${actions.length
+  ? `<div style="background:${C.stone};border-radius:16px;padding:16px 18px;margin:26px 0 0">
+<p style="margin:0 0 8px;font-weight:700;font-size:15px">Was du tun kannst</p>
+${actions
+  .map(
+    (a) => `<p style="margin:8px 0 0;font-size:15px;line-height:1.55"><span style="font-size:12px;color:${C.ink3}">${e(LEVELS[a.level] || '')}</span><br>${e(a.text)}${a.link ? ` <a href="${e(a.link.url)}" style="color:${C.ink}">${e(a.link.label)}</a>` : ''}</p>`,
+  )
+  .join('\n')}
+</div>`
+  : ''}
+<p style="margin:28px 0 4px"><a href="${e(url)}" style="background:${C.ink};color:${C.paper};padding:13px 22px;border-radius:999px;text-decoration:none;font-weight:600;font-size:15px;display:inline-block">Ganzer Artikel mit Fundstellen</a></p>
+</div>
+<p style="font-size:12px;line-height:1.6;color:${C.ink3};margin:18px 6px 0">Die Einordnungen erstellt eine KI (Claude) aus Bundestagsdokumenten und den Wahlprogrammen; jedes Zitat wird automatisch geprüft. Du bekommst diese E-Mail, weil du den Newsletter abonniert hast. <a href="${e(unsubscribeUrl)}" style="color:${C.ink3}">Abbestellen</a></p>
 </div></body></html>`;
 
   return { subject: `${article.title} – ${config.siteName}`, text, html, unsubscribeUrl };
