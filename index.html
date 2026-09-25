@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bundestag Plenum Tracker</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Bundestag Plenum Tracker</h1>
+      <p>
+        Latest plenary decisions, vote-brochure positions, and an estimated divergence score.
+      </p>
+
+      <section>
+        <h2>Latest Plenary Decisions</h2>
+        <ul id="plenum-list"></ul>
+      </section>
+
+      <section>
+        <h2>Vote-Brochure Positions</h2>
+        <ul id="brochure-list"></ul>
+      </section>
+
+      <section>
+        <h2>Divergence Analysis</h2>
+        <p>
+          Score range: <strong>0</strong> (fully aligned) to <strong>1</strong> (strongly diverging)
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Decision</th>
+              <th>Closest Brochure Topic</th>
+              <th>Divergence</th>
+            </tr>
+          </thead>
+          <tbody id="analysis-rows"></tbody>
+        </table>
+      </section>
+
+      <p id="status" role="status"></p>
+    </main>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>

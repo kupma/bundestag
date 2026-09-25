@@ -1,0 +1,20 @@
+{
+  "source": "Bundestag plenary protocols (latest snapshot)",
+  "decisions": [
+    {
+      "id": "plenum-001",
+      "topic": "Rent relief",
+      "summary": "Approved a temporary rent cap in high-pressure housing markets."
+    },
+    {
+      "id": "plenum-002",
+      "topic": "Renewable expansion",
+      "summary": "Fast-tracked permits for wind and solar infrastructure projects."
+    },
+    {
+      "id": "plenum-003",
+      "topic": "Defense procurement",
+      "summary": "Expanded defense acquisition budget for rapid procurement."
+    }
+  ]
+}
