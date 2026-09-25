@@ -4,7 +4,7 @@ import { after, before, describe, test } from 'node:test';
 import { generateArticle } from '../src/articles.js';
 import { syncDecisions } from '../src/dip.js';
 import { createProgram, ingestProgramPdf } from '../src/programs.js';
-import { browser, fakeClaude, fakeDip, fakeMailer, makeConfig, makeDb, makePdf, startApp } from './helpers.js';
+import { browser, fakeClaude, fakeDip, fakeMailer, makeConfig, makeDb, makePdf, samplePositions, startApp } from './helpers.js';
 
 const linkFrom = (letter, path) => {
   const m = letter.text.match(new RegExp(`https?://[^\\s]+${path}\\?token=([^\\s]+)`));
@@ -19,7 +19,9 @@ describe('the website', () => {
 
   before(async () => {
     const db = await makeDb();
-    ctx = { db, config: makeConfig({ adminEmails: ['admin@example.de'] }), claude: fakeClaude(), dip: fakeDip(), embedder: null, mailer: fakeMailer(), fetch };
+    // DIP also knows an older sitting day, outside every window the tests sync.
+    const dip = fakeDip({ positions: [...samplePositions('2026-09-24'), ...samplePositions('2026-09-10')] });
+    ctx = { db, config: makeConfig({ adminEmails: ['admin@example.de'] }), claude: fakeClaude(), dip, embedder: null, mailer: fakeMailer(), fetch };
     for (const [party, text] of [
       ['SPD', 'Wir werden die Mietpreisbremse verlängern und Mieterinnen und Mieter schützen.'],
       ['CDU/CSU', 'Mieten: Wir setzen auf Neubau. Die Mietpreisbremse lassen wir auslaufen.'],
@@ -270,6 +272,25 @@ describe('the website', () => {
     assert.equal((await admin.get('/artikel/2026-09-24')).status, 200, 'admins still see it');
     await admin.post(`/admin/artikel/${article.id}/einblenden`, {});
     assert.equal((await visitor.get('/artikel/2026-09-24')).status, 200);
+  });
+
+  test('the home page says what is on its way', async () => {
+    await syncDecisions({ db: ctx.db, dip: fakeDip({ positions: samplePositions('2026-09-23') }) }, { start: '2026-09-23', end: '2026-09-23' });
+    await ctx.db.query(`insert into job_runs (kind, finished_at, ok) values ('dip-sync', now(), true)`);
+    const home = await browser(app.base).get('/');
+    assert.match(home.text, /In Vorbereitung:<\/strong> Sitzung vom Mittwoch, 23\. September 2026/);
+  });
+
+  test('admins can write any sitting day; the app fetches that day first', async () => {
+    const admin = browser(app.base);
+    assert.equal((await admin.post('/anmelden', { email: 'admin@example.de', password: 'sehr-geheim-6' })).status, 303);
+    assert.equal(await ctx.db.one(`select id from decisions where sitting_date = '2026-09-10'`), null);
+    assert.equal((await admin.post('/admin/artikel', { date: '2026-09-10' })).status, 303);
+    await app.handler.idle();
+    assert.ok(ctx.dip.calls.some((c) => c[0] === 'positions' && c[1] === '2026-09-10' && c[2] === '2026-09-10'));
+    const article = await ctx.db.one(`select slug from articles where sitting_date = '2026-09-10'`);
+    assert.equal(article.slug, '2026-09-10');
+    assert.equal((await admin.get('/artikel/2026-09-10')).status, 200);
   });
 
   let generated = false;

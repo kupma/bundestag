@@ -427,6 +427,9 @@ export async function generateArticle(ctx, date, { force = false, log = () => {}
     others: otherItems,
     programs: programs.map((p) => ({ id: p.id, party: p.party, title: p.title, kind: p.kind })),
     checks: { droppedQuotes, withdrawn },
+    // Without the plenary protocol the votes are unknown; the clock rewrites
+    // the article once the protocol is published.
+    protocolAvailable: !!(protocol && protocol.text),
   };
   const title = String(frame.data.title || `Bundestag am ${formatDateDe(date)}`).trim();
   const lede = String(frame.data.lede || '').trim();
@@ -456,19 +459,45 @@ export async function generateArticle(ctx, date, { force = false, log = () => {}
   return { articleId: article.id, slug: article.slug, usage, droppedQuotes, withdrawn };
 }
 
-// Sitting days with decisions but no article, whose data has stopped changing:
-// DIP fills in a sitting day over several hours, and an article written from
-// half the day would be wrong about the other half.
-export async function pendingDates(db, { from, to, settleHours }) {
+// Sitting days with decisions but no article, whose data counts as complete:
+// either it has not changed for `settleHours` (DIP fills in a sitting day over
+// several hours, and an article written from half the day would be wrong
+// about the other half), or the day lies `settledBefore` or further back – on
+// a fresh deploy everything looks just-fetched, but a sitting two days ago is
+// not going to change much any more, and if it does, the article is refreshed.
+export async function pendingDates(db, { from, to, settleHours, settledBefore = '0000-00-00' }) {
   const { rows } = await db.query(
     `select d.sitting_date
        from decisions d
       where d.sitting_date >= $1 and d.sitting_date <= $2 and d.importance >= $3
         and not exists (select 1 from articles a where a.sitting_date = d.sitting_date)
       group by d.sitting_date
-     having max(d.updated_at) < now() - ($4 || ' hours')::interval
+     having max(d.updated_at) < now() - ($4 || ' hours')::interval or d.sitting_date <= $5
       order by d.sitting_date`,
-    [from, to, IN_DEPTH_MIN_IMPORTANCE, String(settleHours)],
+    [from, to, IN_DEPTH_MIN_IMPORTANCE, String(settleHours), settledBefore],
   );
   return rows.map((r) => r.sitting_date);
+}
+
+// Articles to rewrite: DIP has added or changed decisions for the day since
+// the article was written (and that new data counts as complete by the same
+// rule as above), or the article was written before the plenary protocol –
+// and with it the votes – was published.
+export async function refreshCandidates(db, { from, settleHours, settledBefore = '0000-00-00' }) {
+  const { rows } = await db.query(
+    `select a.sitting_date,
+            bool_or(d.updated_at > a.created_at) as changed,
+            max(d.updated_at) < now() - ($2 || ' hours')::interval or a.sitting_date <= $3 as settled,
+            coalesce((a.body->>'protocolAvailable')::boolean, true) as has_protocol
+       from articles a
+       join decisions d on d.sitting_date = a.sitting_date and d.importance >= $4
+      where a.sitting_date >= $1
+      group by a.id, a.sitting_date, a.body
+      order by a.sitting_date`,
+    [from, String(settleHours), settledBefore, IN_DEPTH_MIN_IMPORTANCE],
+  );
+  return {
+    changed: rows.filter((r) => r.changed && r.settled).map((r) => r.sitting_date),
+    withoutProtocol: rows.filter((r) => !r.has_protocol).map((r) => r.sitting_date),
+  };
 }

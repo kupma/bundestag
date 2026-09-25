@@ -64,7 +64,15 @@ export function themeCards() {
   )}</div>`;
 }
 
-export function homePage(view, { latest, articles, programCount }) {
+function preparingNote({ preparing = [], lastSyncAt = null, programCount }) {
+  if (preparing.length) {
+    return html`<p class="notice"><span><strong>In Vorbereitung:</strong> ${preparing.map((d, i) => html`${i ? ' · ' : ''}Sitzung vom ${formatDateDe(d)}`)}. Der Artikel erscheint automatisch, sobald die Beschlüsse vollständig dokumentiert sind.</span></p>`;
+  }
+  if (!programCount) return html`<p class="meta">Die Wahlprogramme werden gerade in die Bibliothek geladen.</p>`;
+  return lastSyncAt ? html`<p class="meta">Zuletzt beim Bundestag nachgesehen: ${formatDateTimeDe(lastSyncAt)}.</p>` : '';
+}
+
+export function homePage(view, { latest, articles, programCount, preparing = [], lastSyncAt = null }) {
   const rest = latest ? articles.filter((a) => a.id !== latest.id) : articles;
   const body = html`
   ${!view.user
@@ -75,10 +83,11 @@ export function homePage(view, { latest, articles, programCount }) {
     </section>`
     : ''}
   ${latest
-    ? feature(latest)
+    ? html`${feature(latest)}${preparing.length ? preparingNote({ preparing, lastSyncAt, programCount }) : ''}`
     : html`<section class="empty">${venn('teilweise', { size: 'lg' })}
       <h2>Noch kein Sitzungstag</h2>
-      <p>Der erste Artikel erscheint am Morgen nach der nächsten Sitzung des Bundestags${programCount ? '' : ', sobald die Wahlprogramme in der Bibliothek sind'}.</p>
+      <p>Die Parlamentsdokumentation trägt die Beschlüsse meist ein bis zwei Tage nach einer Sitzung ein. Sobald sie da sind, erscheint hier automatisch der Artikel.</p>
+      ${preparingNote({ preparing, lastSyncAt, programCount })}
     </section>`}
   <h2 class="section-title">Selbst etwas bewegen</h2>
   ${themeCards()}
@@ -229,7 +238,9 @@ export function articlePage(view, data) {
       <p class="eyebrow">Sitzung des Bundestags vom ${formatDateDe(article.sitting_date)}</p>
       <h1>${article.title}</h1>
       <p class="lede">${article.lede}</p>
-      <p class="meta">${plural(decisions.length, 'Beschluss', 'Beschlüsse')} im Abgleich mit ${plural(programs.length, 'Programm', 'Programmen')} · <a href="#kommentare">${plural(data.comments.length, 'Kommentar', 'Kommentare')}</a> · <a href="/ueber#methode">So entsteht dieser Artikel</a></p>
+      <p class="meta">${plural(decisions.length, 'Beschluss', 'Beschlüsse')} im Abgleich mit ${plural(programs.length, 'Programm', 'Programmen')}${
+        new Date(article.created_at) - new Date(article.published_at) > 30 * 60 * 1000 ? html` · aktualisiert ${formatDateTimeDe(article.created_at)}` : ''
+      } · <a href="#kommentare">${plural(data.comments.length, 'Kommentar', 'Kommentare')}</a> · <a href="/ueber#methode">So entsteht dieser Artikel</a></p>
     </header>
     ${article.status === 'hidden' ? html`<div class="notice error"><div>Dieser Artikel ist ausgeblendet und nur für Admins sichtbar.</div></div>` : ''}
     <div class="article-body">

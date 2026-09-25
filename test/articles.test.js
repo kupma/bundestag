@@ -6,7 +6,7 @@ import { syncDecisions } from '../src/dip.js';
 import { mailArticle } from '../src/newsletter.js';
 import { createProgram, ingestProgramPdf } from '../src/programs.js';
 import { tick } from '../src/scheduler.js';
-import { fakeClaude, fakeDip, fakeMailer, makeConfig, makeDb, makePdf } from './helpers.js';
+import { fakeClaude, fakeDip, fakeMailer, makeConfig, makeDb, makePdf, samplePositions } from './helpers.js';
 
 async function setup({ programs = true } = {}) {
   const db = await makeDb();
@@ -222,5 +222,85 @@ test('three failures in a day stop the retries for that date', async () => {
   const now = new Date('2026-09-25T08:00:00Z');
   for (let i = 0; i < 5; i++) await tick(ctx, { now });
   assert.equal(calls, 3);
+  await ctx.db.close();
+});
+
+// --- timing: fresh deploys, late DIP data, late protocols -------------------------
+
+async function setupWith({ positions, protocol, config = {} }) {
+  const ctx = await setup();
+  ctx.dip = fakeDip({ positions, protocol });
+  ctx.config = { ...ctx.config, ...config };
+  return ctx;
+}
+
+test('a sitting day two days back counts as complete even when just fetched', async () => {
+  const ctx = await setupWith({ positions: [...samplePositions('2026-09-23'), ...samplePositions('2026-09-24')] });
+  await syncDecisions(ctx, { start: '2026-09-20', end: '2026-09-25' });
+  const args = { from: '2026-09-15', to: '2026-09-24', settleHours: 12 };
+  assert.deepEqual(await pendingDates(ctx.db, args), [], 'without the rule nothing is settled yet');
+  assert.deepEqual(await pendingDates(ctx.db, { ...args, settledBefore: '2026-09-23' }), ['2026-09-23']);
+  await ctx.db.close();
+});
+
+test('the first run writes the latest sitting week, not everything it finds', async () => {
+  const positions = ['2026-09-01', '2026-09-09', '2026-09-10', '2026-09-11'].flatMap((d) => samplePositions(d));
+  const ctx = await setupWith({ positions, config: { settleHours: 12 } });
+  await ctx.db.query(`insert into users (email, display_name, password_hash, newsletter, email_verified_at, unsubscribe_token) values ('s@example.de', 'S', 'x', true, now(), 't1')`);
+  await ctx.db.query('delete from decisions');
+  const report = await tick(ctx, { now: new Date('2026-09-25T08:00:00Z'), forceSync: true });
+  assert.ok(report.sync, 'fetched a wider window on the first run');
+  assert.deepEqual(report.generated.map((g) => g.date), ['2026-09-09', '2026-09-10', '2026-09-11']);
+  assert.equal(ctx.mailer.sent.length, 0, 'old sitting days are not mailed');
+  // From now on it is one article per tick again, within the normal window.
+  const next = await tick(ctx, { now: new Date('2026-09-25T08:15:00Z'), forceSync: true });
+  assert.deepEqual(next.generated, []);
+  await ctx.db.close();
+});
+
+test('an article is rewritten when DIP adds decisions for its day', async () => {
+  let positions = samplePositions('2026-09-24').filter((p) => p.vorgang_id !== '318002');
+  const ctx = await setup();
+  ctx.dip = { ...fakeDip(), positions: async () => positions };
+  ctx.config = { ...ctx.config, settleHours: 0 };
+  await ctx.db.query('delete from decisions');
+  await syncDecisions(ctx, { start: '2026-09-20', end: '2026-09-25' });
+  const { articleId } = await generateArticle(ctx, '2026-09-24');
+  const before = await ctx.db.one('select created_at, body from articles where id = $1', [articleId]);
+  assert.equal(before.body.decisions.length, 1);
+
+  positions = samplePositions('2026-09-24'); // DIP now also has the motion
+  const report = await tick(ctx, { now: new Date('2026-09-25T10:00:00Z'), forceSync: true });
+  assert.deepEqual(report.refreshed, [{ date: '2026-09-24', why: 'neue Beschlüsse in DIP' }]);
+  const after = await ctx.db.one('select id, created_at, published_at, body from articles where sitting_date = $1', ['2026-09-24']);
+  assert.equal(after.id, articleId, 'same article, comments stay');
+  assert.equal(after.body.decisions.length, 2);
+  assert.ok(new Date(after.created_at) > new Date(before.created_at));
+
+  const quiet = await tick(ctx, { now: new Date('2026-09-25T10:15:00Z'), forceSync: true });
+  assert.deepEqual(quiet.refreshed, [], 'no loop');
+  await ctx.db.close();
+});
+
+test('an article written before the protocol is rewritten once the votes are published', async () => {
+  const dip = fakeDip({ protocol: null });
+  const ctx = await setup();
+  ctx.dip = dip;
+  await ctx.db.query(`insert into users (email, display_name, password_hash, newsletter, email_verified_at, unsubscribe_token) values ('s@example.de', 'S', 'x', true, now(), 't1')`);
+  const first = await tick(ctx, { now: new Date('2026-09-25T08:00:00Z'), forceSync: true });
+  assert.deepEqual(first.generated.map((g) => g.date), ['2026-09-24']);
+  assert.equal((await ctx.db.one('select body from articles')).body.protocolAvailable, false);
+  assert.equal(ctx.mailer.sent.length, 1);
+
+  const stillMissing = await tick(ctx, { now: new Date('2026-09-25T09:10:00Z'), forceSync: true });
+  assert.deepEqual(stillMissing.refreshed, [], 'no rewrite while the protocol is missing');
+
+  const withProtocol = { ...fakeDip(), calls: [] };
+  ctx.dip = withProtocol;
+  const report = await tick(ctx, { now: new Date('2026-09-25T10:20:00Z'), forceSync: true });
+  assert.deepEqual(report.refreshed, [{ date: '2026-09-24', why: 'Plenarprotokoll jetzt verfügbar' }]);
+  const body = (await ctx.db.one('select body from articles')).body;
+  assert.equal(body.protocolAvailable, true);
+  assert.equal(ctx.mailer.sent.length, 1, 'the newsletter is not sent again');
   await ctx.db.close();
 });

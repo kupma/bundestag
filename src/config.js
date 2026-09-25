@@ -59,6 +59,11 @@ export function loadConfig(env = process.env) {
     cronSecret: env.CRON_SECRET || '',
     lookbackDays: int(env.DIP_LOOKBACK_DAYS, 10),
     settleHours: int(env.ARTICLE_SETTLE_HOURS, 12),
+    // A sitting day this many days back counts as complete regardless.
+    settleDays: int(env.ARTICLE_SETTLE_DAYS, 2),
+    // How far the very first run looks back, so a fresh site starts with the
+    // most recent sitting week instead of an empty page.
+    backfillDays: int(env.BACKFILL_DAYS, 28),
     earliestHour: int(env.ARTICLE_EARLIEST_HOUR, 6),
     maxDecisions: int(env.ARTICLE_MAX_DECISIONS, 8),
     mailMaxAgeDays: int(env.MAIL_MAX_AGE_DAYS, 3),
