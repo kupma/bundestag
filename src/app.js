@@ -29,6 +29,7 @@ import {
   verifyPassword,
 } from './auth.js';
 import { importDefaultPrograms, libraryStatus } from './default-library.js';
+import { syncDecisions } from './dip.js';
 import { runJob, recentJobs } from './jobs.js';
 import { mailArticle } from './newsletter.js';
 import { createProgram, downloadPdf, ingestProgramPdf, validateProgramMeta } from './programs.js';
@@ -220,7 +221,23 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
       ? { ...rows[0], body: (await db.one('select body from articles where id = $1', [rows[0].id])).body }
       : null;
     const programs = await db.one(`select count(*)::int as n from programs where status = 'ready'`);
-    c.html(homePage(c.view, { latest, articles: rows, programCount: programs.n }));
+    // What is on its way: sitting days with decisions but no article yet, and
+    // when DIP was last asked – so an empty page explains itself.
+    const { rows: preparing } = await db.query(
+      `select d.sitting_date from decisions d
+        where d.importance >= 0 and not exists (select 1 from articles a where a.sitting_date = d.sitting_date)
+        group by d.sitting_date order by d.sitting_date desc limit 3`,
+    );
+    const lastSync = await db.one(`select finished_at from job_runs where kind = 'dip-sync' and ok order by id desc limit 1`);
+    c.html(
+      homePage(c.view, {
+        latest,
+        articles: rows,
+        programCount: programs.n,
+        preparing: preparing.map((r) => r.sitting_date).reverse(),
+        lastSyncAt: lastSync ? lastSync.finished_at : null,
+      }),
+    );
   });
 
   route('GET', '/mitmachen', async (c) => c.html(mitmachenPage(c.view)));
@@ -569,7 +586,16 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
     const date = String(c.form.date || '');
     if (!isYmd(date)) throw new HttpError(400, 'Bitte ein gültiges Datum angeben.');
     const force = c.form.force === '1';
-    background('artikel', () => runJob(db, `article:${date}`, (log) => generateArticle(ctx, date, { force, log })));
+    background('artikel', () =>
+      runJob(db, `article:${date}`, async (log) => {
+        // Any date, also outside the clock's window: fetch that day first.
+        if (ctx.dip) {
+          const r = await syncDecisions(ctx, { start: date, end: date });
+          log(`DIP: ${r.decisions} Beschlüsse am ${date}`);
+        }
+        return generateArticle(ctx, date, { force, log });
+      }),
+    );
     c.redirect('/admin?ok=artikel');
   });
 
