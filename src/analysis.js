@@ -27,15 +27,16 @@ export const computeDivergence = (decisions, brochureTopics) => {
   return decisions.map((decision) => {
     const decisionKeywords = keywordSet(`${decision.topic} ${decision.summary}`);
 
-    let bestTopic = brochureTopics[0] ?? null;
-    let bestAlignment = 0;
+    let bestTopic = null;
+    let bestAlignment = -1;
 
     for (const topic of brochureTopics) {
       const topicKeywords = keywordSet(`${topic.topic} ${topic.position}`);
       const alignment = overlap(decisionKeywords, topicKeywords);
       if (
         alignment > bestAlignment ||
-        (alignment === bestAlignment &&
+        (alignment > 0 &&
+          alignment === bestAlignment &&
           bestTopic &&
           tieBreakCollator.compare(topic.topic, bestTopic.topic) < 0)
       ) {
@@ -44,11 +45,13 @@ export const computeDivergence = (decisions, brochureTopics) => {
       }
     }
 
+    const divergence = bestTopic ? Number((1 - bestAlignment).toFixed(2)) : 1;
+
     return {
       decisionId: decision.id,
       decisionTopic: decision.topic,
       closestBrochureTopic: bestTopic?.topic ?? "No related topic",
-      divergence: Number((1 - bestAlignment).toFixed(2)),
+      divergence,
     };
   });
 };

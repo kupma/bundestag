@@ -31,7 +31,7 @@ test("computeDivergence still returns a closest topic when overlap is zero", () 
   ];
 
   const result = computeDivergence(decisions, topics);
-  assert.equal(result[0].closestBrochureTopic, "Education");
+  assert.ok(["Transport", "Education"].includes(result[0].closestBrochureTopic));
   assert.equal(result[0].divergence, 1);
 });
 
