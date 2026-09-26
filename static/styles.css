@@ -388,3 +388,67 @@ th { color: var(--ink-3); font-weight: 600; }
   html { scroll-behavior: auto; }
   .button, button, .theme-card { transition: none; }
 }
+
+/* --- statistics (admin) --- */
+.range-nav { display: flex; gap: 8px; flex-wrap: wrap; }
+.range-nav a { text-decoration: none; }
+.range-nav a[aria-current] { background: var(--ink); color: var(--on-ink); }
+.stat-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 20px 0; }
+.stat-tile { background: var(--surface); border-radius: var(--r-md); box-shadow: var(--shadow); padding: 16px 18px; display: flex; flex-direction: column; }
+.stat-value { font: 600 1.9rem/1.1 var(--display); }
+.stat-label { color: var(--ink-3); font-size: 0.85rem; }
+.bars { display: block; width: 100%; height: 180px; margin-top: 16px; }
+.bars .bar { fill: var(--ink-2); }
+.bars .bar-hit { fill: transparent; }
+.bars g:hover .bar { fill: var(--ink); }
+.bars g:hover .bar-hit { fill: var(--stone-1); }
+.bars-axis { display: flex; justify-content: space-between; margin: 6px 0 0; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px 28px; }
+.stats-table td:first-child { word-break: break-all; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* --- landing: a scroll through the plenary hall (static/landing.js) --- */
+.plenum { position: relative; }
+.plenum-stage { position: sticky; top: 0; height: 100vh; height: 100svh; overflow: hidden; }
+.plenum-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.plenum-fallback { position: absolute; left: 50%; top: 42%; width: min(88vw, 620px); transform: translate(-50%, -50%); fill: var(--stone-3); opacity: 0.8; }
+.plenum-stage.ready .plenum-fallback { display: none; }
+.plenum-steps { position: relative; z-index: 1; margin-top: -100vh; margin-top: -100svh; }
+.step { min-height: 100vh; min-height: 100svh; display: flex; align-items: center; padding: 12vh max(22px, calc((100vw - 1100px) / 2)); }
+.step-card {
+  max-width: 27rem;
+  background: color-mix(in srgb, var(--surface) 84%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+  padding: 26px 28px;
+}
+.step-card h2 { font-size: clamp(1.5rem, 3vw, 2rem); margin: 0 0 10px; }
+.step-card p:last-child { margin-bottom: 0; }
+.step-card .legend { margin: 10px 0 14px; }
+.step-no { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--stone-3); font: 600 0.85rem/1 var(--text); color: var(--ink-2); margin: 0 0 12px; }
+.step-hero { position: relative; }
+.step-hero .step-card { max-width: 34rem; padding: 32px 34px; }
+.step-hero h1 { margin: 0 0 14px; line-height: 1.05; }
+.step-hero .brand-word { display: block; font-size: clamp(2.6rem, 7vw, 4.6rem); letter-spacing: -0.02em; }
+.step-hero .claim { display: block; font-size: clamp(1.25rem, 2.6vw, 1.7rem); font-weight: 400; color: var(--ink-2); margin-top: 10px; line-height: 1.25; }
+.step-hero .lede { font-size: 1.08rem; }
+.scroll-hint { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); margin: 0; font-size: 0.85rem; color: var(--ink-3); white-space: nowrap; }
+.scroll-hint::after { content: ''; display: block; width: 1.5px; height: 28px; margin: 8px auto 0; background: linear-gradient(var(--ink-3), transparent); }
+.js-plenum .step-card { opacity: 0.35; transform: translateY(18px); transition: opacity 0.6s ease, transform 0.6s ease; }
+.js-plenum .step.is-active .step-card, .js-plenum .step-hero .step-card { opacity: 1; transform: none; }
+.landing-after { padding-top: 24px; }
+.faq details { border-bottom: 1px solid var(--line); padding: 14px 0; }
+.faq summary { cursor: pointer; font-weight: 600; list-style-position: outside; }
+.faq details p { color: var(--ink-2); margin: 10px 0 0; max-width: 46em; }
+
+@media (max-width: 900px) {
+  .step { align-items: flex-end; padding: 0 16px 7vh; }
+  .step-card, .step-hero .step-card { max-width: none; width: 100%; padding: 22px 22px; }
+  .step-hero { align-items: flex-start; padding-top: 46vh; padding-top: 46svh; }
+  .scroll-hint { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .js-plenum .step-card { transform: none; transition: none; }
+}

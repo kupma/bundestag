@@ -24,6 +24,12 @@ export function adminPage(view, d) {
   </section>
 
   <section class="admin-block">
+    <h2>Besucher</h2>
+    <p><a class="button secondary" href="/admin/statistik">Statistik ansehen →</a></p>
+    <p class="meta">Ohne Cookies und ohne fremde Dienste gezählt.${config.plausible.domain ? ` Zusätzlich aktiv: Plausible (${config.plausible.domain}).` : ''}${config.seo.googleVerification ? ' Google Search Console ist verbunden.' : ' Tipp: GOOGLE_SITE_VERIFICATION setzen und die Seite in der Google Search Console anmelden – dort stehen die Suchbegriffe.'}</p>
+  </section>
+
+  <section class="admin-block">
     <h2>Aktionen</h2>
     <div class="admin-actions">
       <form method="post" action="/admin/tick"><button type="submit">Jetzt aktualisieren</button><p class="meta">Holt neue Beschlüsse aus DIP, schreibt fällige Artikel, verschickt den Newsletter.</p></form>
@@ -133,4 +139,53 @@ export function adminPage(view, d) {
   </section>
   <script src="/static/admin.js?v=${ASSET_VERSION.adminJs}" defer></script>`;
   return layout(view, { title: 'Admin', body, noindex: true });
+}
+
+// --- statistics -------------------------------------------------------------------
+
+const fmt = (n) => new Intl.NumberFormat('de-DE').format(n || 0);
+
+function rankTable(title, rows, { label = (k) => k, empty = 'Noch keine Daten.' } = {}) {
+  return html`<div class="stats-table"><h3>${title}</h3>${rows.length
+    ? html`<table><thead><tr><th></th><th class="num">Besuche</th><th class="num">Aufrufe</th></tr></thead><tbody>${rows.map(
+        (r) => html`<tr><td>${label(r.key)}</td><td class="num">${fmt(r.visitors)}</td><td class="num">${fmt(r.views)}</td></tr>`,
+      )}</tbody></table>`
+    : html`<p class="meta">${empty}</p>`}</div>`;
+}
+
+export function statsPage(view, { days, report }) {
+  const { series, totals } = report;
+  const max = Math.max(1, ...series.map((r) => r.visitors));
+  const dayLabel = (d) => formatDateDe(d, { weekday: false });
+  const body = html`<p class="meta"><a href="/admin">← Admin</a></p>
+  <h1>Statistik</h1>
+  <p class="range-nav">${[7, 30, 90, 365].map((n) => html`<a class="chip${n === days ? ' ok' : ''}" href="/admin/statistik?tage=${n}"${n === days ? html` aria-current="page"` : ''}>${n} Tage</a>`)}</p>
+
+  <div class="stat-tiles">
+    <div class="stat-tile"><span class="stat-value">${fmt(totals.live)}</span><span class="stat-label">gerade da (30 Min.)</span></div>
+    <div class="stat-tile"><span class="stat-value">${fmt(totals.today.visitors)}</span><span class="stat-label">Besuche heute</span></div>
+    <div class="stat-tile"><span class="stat-value">${fmt(totals.week.visits)}</span><span class="stat-label">Besuche, 7 Tage</span></div>
+    <div class="stat-tile"><span class="stat-value">${fmt(totals.visits)}</span><span class="stat-label">Besuche, ${days} Tage</span></div>
+    <div class="stat-tile"><span class="stat-value">${fmt(totals.views)}</span><span class="stat-label">Seitenaufrufe, ${days} Tage</span></div>
+  </div>
+
+  <section class="admin-block">
+    <h2>Besuche pro Tag</h2>
+    <svg class="bars" viewBox="0 0 ${series.length * 10} 100" preserveAspectRatio="none" role="img" aria-label="Besuche pro Tag vom ${dayLabel(report.from)} bis ${dayLabel(report.today)}, höchstens ${fmt(max)} an einem Tag">
+      ${series.map((r, i) => {
+        const h = r.visitors ? Math.max(1.5, (r.visitors / max) * 100) : 0;
+        return html`<g><rect class="bar-hit" x="${i * 10}" y="0" width="10" height="100"></rect><rect class="bar" x="${i * 10 + 1.5}" y="${(100 - h).toFixed(2)}" width="7" height="${h.toFixed(2)}" rx="1"></rect><title>${dayLabel(r.day)}: ${fmt(r.visitors)} Besuche, ${fmt(r.views)} Aufrufe</title></g>`;
+      })}
+    </svg>
+    <p class="bars-axis meta"><span>${dayLabel(report.from)}</span><span>Spitze: ${fmt(max)}</span><span>${dayLabel(report.today)}</span></p>
+  </section>
+
+  <section class="admin-block stats-grid">
+    ${rankTable('Seiten', report.pages, { label: (k) => html`<a href="${k}">${k}</a>` })}
+    ${rankTable('Woher', report.referrers, { empty: 'Noch keine verweisenden Seiten – direkte Besuche zählen hier nicht.' })}
+    ${rankTable('Kampagnen (utm_source)', report.sources, { empty: 'Links mit ?utm_source=… erscheinen hier, z. B. der Newsletter.' })}
+    ${rankTable('Geräte', report.devices)}
+  </section>
+  <p class="meta">Ein „Besuch“ ist eine Person an einem Tag: Wer an drei Tagen kommt, zählt dreimal. Gezählt wird ohne Cookies, Bots und Admins werden nicht mitgezählt. Rohdaten werden nach gut einem Jahr gelöscht.</p>`;
+  return layout(view, { title: 'Statistik', body, noindex: true });
 }

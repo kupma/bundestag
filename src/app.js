@@ -11,6 +11,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { createTracker, shouldCount, trafficReport } from './analytics.js';
 import { generateArticle } from './articles.js';
 import {
   clearSessionCookie,
@@ -32,10 +33,11 @@ import { importDefaultPrograms, libraryStatus } from './default-library.js';
 import { syncDecisions } from './dip.js';
 import { runJob, recentJobs } from './jobs.js';
 import { mailArticle } from './newsletter.js';
-import { createProgram, downloadPdf, ingestProgramPdf, validateProgramMeta } from './programs.js';
+import { bySeat, createProgram, downloadPdf, ingestProgramPdf, validateProgramMeta } from './programs.js';
 import { createLimiter } from './ratelimit.js';
 import { searchLibrary } from './retrieval.js';
 import { tick } from './scheduler.js';
+import { manifest, newsSitemapXml, robotsTxt, sitemapXml } from './seo.js';
 import { addDays, berlinDate, isYmd } from './text.js';
 import {
   accountPage,
@@ -48,22 +50,33 @@ import {
   unsubscribePage,
   verifyMail,
 } from './views/account.js';
-import { adminPage } from './views/admin.js';
+import { adminPage, statsPage } from './views/admin.js';
 import { libraryPage, passagePage, programPage } from './views/library.js';
 import { aboutPage, archivePage, articlePage, errorPage, homePage, imprintPage, mitmachenPage, privacyPage, rssFeed } from './views/public.js';
 
 const STATIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'static');
-const MIME = { '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.txt': 'text/plain; charset=utf-8', '.woff2': 'font/woff2' };
+const MIME = { '.webmanifest': 'application/manifest+json', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.txt': 'text/plain; charset=utf-8', '.woff2': 'font/woff2' };
 const FORM_LIMIT = 100 * 1024;
 const PDF_LIMIT = 80 * 1024 * 1024;
 
-const SECURITY_HEADERS = {
-  'Content-Security-Policy':
-    "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'",
-  'X-Content-Type-Options': 'nosniff',
-  'Referrer-Policy': 'strict-origin-when-cross-origin',
-  'X-Frame-Options': 'DENY',
-};
+function securityHeaders(config) {
+  // Plausible, when switched on, is the one outside script, and the only
+  // outside address a page may talk to.
+  let extra = '';
+  if (config.plausible.domain) {
+    try {
+      extra = ` ${new URL(config.plausible.src).origin}`;
+    } catch {
+      extra = '';
+    }
+  }
+  return {
+    'Content-Security-Policy': `default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'${extra}; connect-src 'self'${extra}; form-action 'self'; frame-ancestors 'none'; base-uri 'self'`,
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'X-Frame-Options': 'DENY',
+  };
+}
 
 const NOTICES = {
   willkommen: 'Willkommen! Dein Konto ist angelegt.',
@@ -152,6 +165,8 @@ const LIMITS = {
 
 export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
   const { db, config, mailer } = ctx;
+  const SECURITY_HEADERS = securityHeaders(config);
+  const track = createTracker(db);
   const limits = Object.fromEntries(Object.entries({ ...LIMITS, ...limitOverrides }).map(([k, v]) => [k, createLimiter(v)]));
   const pending = new Set();
   const routes = [];
@@ -210,13 +225,13 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
 
   // --- public pages -----------------------------------------------------------------
 
-  const ARTICLE_LIST = `select a.id, a.slug, a.sitting_date, a.title, a.lede, a.published_at,
+  const ARTICLE_LIST = `select a.id, a.slug, a.sitting_date, a.title, a.lede, a.published_at, a.created_at as updated_at,
       coalesce(jsonb_array_length(a.body->'decisions'), 0)::int as decision_count,
       (select count(*)::int from comments c where c.article_id = a.id) as comment_count
     from articles a where a.status = 'published' order by a.sitting_date desc`;
 
   route('GET', '/', async (c) => {
-    const { rows } = await db.query(`${ARTICLE_LIST} limit 11`);
+    const { rows } = await db.query(`${ARTICLE_LIST} limit 7`);
     const latest = rows.length
       ? { ...rows[0], body: (await db.one('select body from articles where id = $1', [rows[0].id])).body }
       : null;
@@ -292,8 +307,9 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
     const q = String(c.query.get('q') || '').slice(0, 200);
     if (q && !limits.search.hit(c.ip)) throw new HttpError(429, 'Zu viele Suchanfragen. Bitte kurz warten.');
     const { rows: programs } = await db.query(
-      `select slug, party, title, kind, election, page_count from programs where status = 'ready' order by kind desc, party`,
+      `select slug, party, title, kind, election, page_count from programs where status = 'ready'`,
     );
+    programs.sort(bySeat);
     const hits = q ? await searchLibrary(db, q, { limit: 30 }) : [];
     c.html(libraryPage(c.view, { programs, q, hits }));
   });
@@ -344,7 +360,8 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
   });
 
   route('GET', '/ueber', async (c) => {
-    const { rows: programs } = await db.query(`select slug, party, title from programs where status = 'ready' order by kind desc, party`);
+    const { rows: programs } = await db.query(`select slug, party, title from programs where status = 'ready'`);
+    programs.sort(bySeat);
     c.html(aboutPage(c.view, { programs }));
   });
   route('GET', '/impressum', async (c) => c.html(imprintPage(c.view)));
@@ -361,8 +378,28 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
   });
 
   route('GET', '/robots.txt', async (c) => {
-    c.send(200, 'User-agent: *\nDisallow: /admin\nDisallow: /konto\n', 'text/plain; charset=utf-8');
+    c.send(200, robotsTxt(config), 'text/plain; charset=utf-8');
   });
+
+  route('GET', '/sitemap.xml', async (c) => {
+    const { rows: articles } = await db.query(`${ARTICLE_LIST} limit 5000`);
+    const { rows: programs } = await db.query(`select slug, created_at from programs where status = 'ready' order by id`);
+    c.send(200, sitemapXml(config, { articles, programs }), 'application/xml; charset=utf-8');
+  });
+
+  route('GET', '/news-sitemap.xml', async (c) => {
+    const { rows: articles } = await db.query(`${ARTICLE_LIST} limit 50`);
+    c.send(200, newsSitemapXml(config, { articles }), 'application/xml; charset=utf-8');
+  });
+
+  route('GET', '/manifest.webmanifest', async (c) => {
+    c.send(200, manifest(config), 'application/manifest+json');
+  });
+
+  // IndexNow proves the site owns its key with a file of that name.
+  if (config.seo.indexNowKey) {
+    route('GET', `/${config.seo.indexNowKey}\\.txt`, async (c) => c.send(200, config.seo.indexNowKey, 'text/plain; charset=utf-8'));
+  }
 
   // For an external cron, if the in-process clock is switched off.
   route('GET', '/api/tick', async (c) => {
@@ -575,6 +612,12 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
     );
   });
 
+  route('GET', '/admin/statistik', async (c) => {
+    if (!requireAdmin(c)) return;
+    const days = [7, 30, 90, 365].includes(Number(c.query.get('tage'))) ? Number(c.query.get('tage')) : 30;
+    c.html(statsPage(c.view, { days, report: await trafficReport(db, { days, today: berlinDate(new Date()) }) }));
+  });
+
   route('POST', '/admin/tick', async (c) => {
     if (!requireAdmin(c)) return;
     background('tick', () => tick(ctx, { forceSync: true }));
@@ -710,6 +753,7 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
         res.end(body);
       },
       html(page, status = 200) {
+        this.page = status;
         this.send(status, String(page), 'text/html; charset=utf-8');
       },
       redirect(location, status = 303) {
@@ -722,6 +766,18 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
     try {
       if (req.method === 'GET' && url.pathname.startsWith('/static/')) {
         if (await serveStatic(res, url.pathname.slice('/static/'.length))) return;
+      }
+      // One address per page: the Railway address and www. lead to the real one.
+      const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
+      if (
+        config.canonicalHost &&
+        (req.method === 'GET' || req.method === 'HEAD') &&
+        url.pathname !== '/healthz' &&
+        host !== config.canonicalHost &&
+        (host.endsWith('.up.railway.app') || host === `www.${config.canonicalHost}`)
+      ) {
+        res.writeHead(301, { Location: `${config.baseUrl}${url.pathname}${url.search}` });
+        return res.end();
       }
       if (req.method === 'GET' && url.pathname === '/favicon.ico') {
         res.writeHead(301, { Location: '/static/favicon.svg' });
@@ -770,6 +826,13 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
       }
       await match.handler(c);
       if (!res.headersSent) throw new Error(`Route ${method} ${url.pathname} hat nicht geantwortet.`);
+      const ua = String(req.headers['user-agent'] || '');
+      if (c.page && shouldCount({ method: req.method, path: url.pathname, status: c.page, ua, user: c.user })) {
+        const p = track({ path: url.pathname, referer: req.headers.referer, ua, ip: c.ip, ownHost: host.split(':')[0], query: url.searchParams })
+          .catch((err) => console.error('[statistik]', err.message));
+        pending.add(p);
+        p.finally(() => pending.delete(p));
+      }
     } catch (err) {
       const status = err instanceof HttpError ? err.status : 500;
       if (status === 500) console.error(`[http] ${req.method} ${url.pathname}:`, err);
