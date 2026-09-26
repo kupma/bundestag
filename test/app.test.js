@@ -42,8 +42,12 @@ describe('the website', () => {
     const b = browser(app.base);
     const home = await b.get('/');
     assert.equal(home.status, 200);
-    assert.match(home.text, /Versprochen &amp; Beschlossen/);
+    assert.match(home.text, /Wahlwort/);
     assert.match(home.text, /Noch kein Sitzungstag/);
+    assert.match(home.text, /class="plenum-canvas"/, 'the landing page draws the hall');
+    assert.match(home.text, /<script src="\/static\/landing\.js\?v=[0-9a-f]{10}" defer><\/script>/);
+    assert.equal((await b.get('/static/landing.js')).status, 200);
+    assert.match(home.text, /"@type":"FAQPage"/);
     assert.match(home.text, /Selbst etwas bewegen/);
     assert.match(home.text, /<link rel="stylesheet" href="\/static\/styles\.css\?v=[0-9a-f]{10}">/);
     assert.match(home.headers.get('content-security-policy'), /default-src 'self'/);
@@ -300,4 +304,63 @@ describe('the website', () => {
     await syncDecisions(ctx, { start: '2026-09-20', end: '2026-09-25' });
     await generateArticle(ctx, '2026-09-24');
   }
+
+  test('search engines: sitemaps, robots, manifest, structured data', async () => {
+    const b = browser(app.base);
+    const robots = await b.get('/robots.txt');
+    assert.match(robots.text, /Sitemap: http:\/\/localhost:3999\/sitemap\.xml/);
+    assert.match(robots.text, /Disallow: \/admin/);
+    const sitemap = await b.get('/sitemap.xml');
+    assert.equal(sitemap.status, 200);
+    assert.match(sitemap.headers.get('content-type'), /xml/);
+    assert.match(sitemap.text, /<loc>http:\/\/localhost:3999\/artikel\/2026-09-24<\/loc><lastmod>/);
+    assert.match(sitemap.text, /<loc>http:\/\/localhost:3999\/programme\/[a-z0-9-]+<\/loc>/);
+    assert.match((await b.get('/news-sitemap.xml')).text, /<urlset[^>]+sitemap-news/);
+    assert.equal(JSON.parse((await b.get('/manifest.webmanifest')).text).lang, 'de');
+    assert.equal((await b.get('/static/og.png')).headers.get('content-type'), 'image/png');
+
+    const article = await b.get('/artikel/2026-09-24?utm_source=newsletter');
+    assert.match(article.text, /<link rel="canonical" href="http:\/\/localhost:3999\/artikel\/2026-09-24">/, 'no utm in the canonical address');
+    assert.match(article.text, /<title>[^<]+ – Bundestag am 24\. September 2026 – Wahlwort<\/title>/);
+    assert.match(article.text, /<meta property="og:type" content="article">/);
+    const ld = JSON.parse(article.text.match(/<script type="application\/ld\+json">(.*?)<\/script>/s)[1]);
+    const news = ld['@graph'].find((x) => x['@type'] === 'NewsArticle');
+    assert.ok(news.datePublished && news.headline);
+    assert.ok(ld['@graph'].some((x) => x['@type'] === 'BreadcrumbList'));
+    assert.match((await b.get('/anmelden')).text, /<meta name="robots" content="noindex">/);
+  });
+
+  test('parties appear in the order they sit in the hall', async () => {
+    const b = browser(app.base);
+    const lib = await b.get('/programme');
+    assert.ok(lib.text.indexOf('SPD') < lib.text.indexOf('CDU/CSU'), 'SPD sits left of the Union');
+  });
+
+  test('the statistics count people, not bots or admins, without a cookie', async () => {
+    await ctx.db.query('delete from page_views');
+    const reader = browser(app.base);
+    const res = await reader.get('/mitmachen', { headers: { 'User-Agent': 'Mozilla/5.0 (iPhone) Mobile', Referer: 'https://www.google.de/' } });
+    assert.equal(res.headers.get('set-cookie'), null);
+    await reader.get('/archiv?utm_source=newsletter', { headers: { 'User-Agent': 'Mozilla/5.0 (iPhone) Mobile' } });
+    await reader.get('/mitmachen', { headers: { 'User-Agent': 'Googlebot/2.1 (+http://www.google.com/bot.html)' } });
+    await reader.get('/gibt-es-nicht', { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    await app.handler.idle();
+    const { rows } = await ctx.db.query('select path, referrer, source, device, visitor from page_views order by id');
+    assert.deepEqual(rows.map((r) => [r.path, r.referrer, r.source, r.device]), [
+      ['/mitmachen', 'google.de', '', 'Mobil'],
+      ['/archiv', '', 'newsletter', 'Mobil'],
+    ]);
+    assert.equal(rows[0].visitor, rows[1].visitor, 'the same person on the same day');
+    assert.doesNotMatch(JSON.stringify(rows), /127\.0\.0\.1/, 'no IP address stored');
+
+    const admin = browser(app.base);
+    await admin.post('/anmelden', { email: 'admin@example.de', password: 'sehr-geheim-6' });
+    const page = await admin.get('/admin/statistik');
+    assert.equal(page.status, 200);
+    assert.match(page.text, /Google/);
+    assert.match(page.text, /newsletter/);
+    await app.handler.idle();
+    assert.equal((await ctx.db.one('select count(*)::int as n from page_views')).n, 2, 'admins are not counted');
+    assert.equal((await reader.get('/admin/statistik')).status, 303);
+  });
 });

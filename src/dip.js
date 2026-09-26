@@ -106,9 +106,17 @@ export function importance(d) {
 
 export const IN_DEPTH_MIN_IMPORTANCE = 0;
 
+// DIP returns positions in no fixed order (by last update, which moves), so
+// they are sorted first: the same data has to give the same decision, or every
+// hourly sync would count as a change and a day would never settle.
+const positionOrder = (a, b) =>
+  String(a.datum || '').localeCompare(String(b.datum || '')) ||
+  (Number(a.id) || 0) - (Number(b.id) || 0) ||
+  String(a.id || '').localeCompare(String(b.id || ''));
+
 export function extractDecisions(positions) {
   const byKey = new Map();
-  for (const p of positions) {
+  for (const p of [...positions].filter(Boolean).sort(positionOrder)) {
     if (!p || (p.zuordnung && p.zuordnung !== 'BT')) continue;
     if (p.dokumentart && p.dokumentart !== 'Plenarprotokoll') continue;
     const beschluesse = (p.beschlussfassung || [])

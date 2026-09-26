@@ -271,7 +271,7 @@ test('an article is rewritten when DIP adds decisions for its day', async () => 
 
   positions = samplePositions('2026-09-24'); // DIP now also has the motion
   const report = await tick(ctx, { now: new Date('2026-09-25T10:00:00Z'), forceSync: true });
-  assert.deepEqual(report.refreshed, [{ date: '2026-09-24', why: 'neue Beschlüsse in DIP' }]);
+  assert.deepEqual(report.refreshed.map(({ date, why }) => ({ date, why })), [{ date: '2026-09-24', why: 'neue Beschlüsse in DIP' }]);
   const after = await ctx.db.one('select id, created_at, published_at, body from articles where sitting_date = $1', ['2026-09-24']);
   assert.equal(after.id, articleId, 'same article, comments stay');
   assert.equal(after.body.decisions.length, 2);
@@ -298,9 +298,27 @@ test('an article written before the protocol is rewritten once the votes are pub
   const withProtocol = { ...fakeDip(), calls: [] };
   ctx.dip = withProtocol;
   const report = await tick(ctx, { now: new Date('2026-09-25T10:20:00Z'), forceSync: true });
-  assert.deepEqual(report.refreshed, [{ date: '2026-09-24', why: 'Plenarprotokoll jetzt verfügbar' }]);
+  assert.deepEqual(report.refreshed.map(({ date, why }) => ({ date, why })), [{ date: '2026-09-24', why: 'Plenarprotokoll jetzt verfügbar' }]);
   const body = (await ctx.db.one('select body from articles')).body;
   assert.equal(body.protocolAvailable, true);
   assert.equal(ctx.mailer.sent.length, 1, 'the newsletter is not sent again');
   await ctx.db.close();
+});
+
+test("yesterday's sitting is written the next morning, even while DIP is still adding to it", async () => {
+  const ctx = await setup();
+  ctx.config = { ...ctx.config, settleHours: 12 };
+  await ctx.db.query('delete from decisions');
+  ctx.dip = fakeDip({ positions: samplePositions('2026-09-25') });
+  const early = await tick(ctx, { now: new Date('2026-09-26T03:00:00Z'), forceSync: true });
+  assert.deepEqual(early.generated, [], 'not before 06:00 Berlin time');
+  const morning = await tick(ctx, { now: new Date('2026-09-26T06:30:00Z'), forceSync: true });
+  assert.deepEqual(morning.generated.map((g) => g.date), ['2026-09-25'], 'just fetched, but it is the next morning');
+  await ctx.db.close();
+});
+
+test('programmes are ordered as the groups sit in the hall, the coalition agreement last', async () => {
+  const { bySeat } = await import('../src/programs.js');
+  const parties = ['AfD', 'CDU, CSU und SPD', 'SPD', 'Die Linke', 'CDU/CSU', 'Bündnis 90/Die Grünen'].map((party) => ({ party }));
+  assert.deepEqual(parties.sort(bySeat).map((p) => p.party), ['Die Linke', 'Bündnis 90/Die Grünen', 'SPD', 'CDU/CSU', 'AfD', 'CDU, CSU und SPD']);
 });

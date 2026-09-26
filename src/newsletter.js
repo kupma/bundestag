@@ -27,7 +27,8 @@ function resourceUrl(config, key) {
 }
 
 export function composeLetter(config, article, user) {
-  const url = `${config.baseUrl}/artikel/${article.slug}`;
+  // Tagged, so the site's statistics can tell newsletter readers apart.
+  const url = `${config.baseUrl}/artikel/${article.slug}?utm_source=newsletter&utm_medium=email`;
   const unsubscribeUrl = `${config.baseUrl}/newsletter/abmelden?t=${encodeURIComponent(user.unsubscribe_token)}`;
   const body = article.body || {};
   const date = formatDateDe(article.sitting_date);

@@ -1,4 +1,4 @@
-# Versprochen & Beschlossen
+# Wahlwort
 
 What the Bundestag decides, and what the parties promised beforehand.
 
@@ -29,11 +29,11 @@ Programme PDFs ──► page-exact passages ──► German full-text index (+
 - **How the groups voted** isn't in DIP's structured data. It is in the plenary protocol, in the President's vote formula ("mit den Stimmen der … gegen die Stimmen der …"). `src/protocol.js` finds these sentences next to the decision's Drucksache numbers and passes them to Claude.
 - **The library** splits each PDF into passages of about 900 characters. A passage never crosses a page, so every citation has an exact page number and a link `…pdf#page=N`. Search uses Postgres full-text search with the German stemmer. With `VOYAGE_API_KEY` set, it also uses vector similarity, fused with reciprocal rank fusion.
 - **Claude** (`claude-opus-5`, adaptive thinking, structured outputs) is called roughly `2 + number of decisions` times per article. Requests opt into server-side refusal fallbacks (`fallbacks: "default"`), because parliamentary topics such as defence and extremism can trip a safety classifier.
-- **Timing:** a built-in clock ticks every 15 minutes. It fetches DIP hourly and never writes about the current day. DIP records a sitting's decisions over one or two days, so an article is written once a day's data has stopped changing for 12 hours, or at the latest when the day is two days old. If DIP adds decisions later, or the plenary protocol (with the votes) only appears after the article, the article is rewritten; the newsletter is not sent again. On the very first run the app looks back four weeks and writes the most recent sitting week, so a new site does not start empty. It stays quiet before 06:00 Berlin time and gives up on a date after 3 failures in 24 hours. Emails go out between 06:00 and 21:00, and only for sitting days of the last three days.
+- **Timing:** a built-in clock ticks every 15 minutes. It fetches DIP hourly and never writes about the current day. Yesterday's sitting is written the next morning (from 06:00 Berlin time), or earlier once its data has stopped changing for 12 hours. DIP records a sitting's decisions over one or two days, so the article is rewritten as the rest arrives (once the new data has been quiet for 12 hours, or the day is two days old). If DIP adds decisions later, or the plenary protocol (with the votes) only appears after the article, the article is rewritten; the newsletter is not sent again. On the very first run the app looks back four weeks and writes the most recent sitting week, so a new site does not start empty. It stays quiet before 06:00 Berlin time and gives up on a date after 3 failures in 24 hours. Emails go out between 06:00 and 21:00, and only for sitting days of the last three days.
 
 ## Design
 
-- **Politically neutral colour.** Warm paper and stone tones with a charcoal ink. Almost every hue is claimed by some party in Germany (black, red, green, yellow, blue, purple, magenta, orange, turquoise), so the site uses none of them. Party colours appear only as a small identification dot, the same size for every party. Parties are listed alphabetically.
+- **Politically neutral colour.** Warm paper and stone tones with a charcoal ink. Almost every hue is claimed by some party in Germany (black, red, green, yellow, blue, purple, magenta, orange, turquoise), so the site uses none of them. Party colours appear only as a small identification dot, the same size for every party. Parties are listed in the order they sit in the plenary hall (left to right as seen from the President), the coalition agreement last.
 - **Shapes instead of colours.** Two circles stand for "versprochen" (left) and "beschlossen" (right). Their overlap is the verdict: nearly one circle = *entspricht*, half overlapping = *teilweise*, apart = *widerspricht*, a dashed empty circle = *nicht thematisiert*. The same two circles are the logo. A verdict never depends on colour alone, which also works in greyscale, for colour-blind readers, and in dark mode.
 - **Calm by default.** Soft rounded shapes, generous whitespace, sentence case, no alarm colours. Results use shape too: adopted = filled pill, rejected = outlined, settled = dashed.
 - **Type.** [Fraunces](https://github.com/undercasetype/Fraunces) (soft axis) for headings and [Figtree](https://github.com/erikdkennedy/figtree) for text. Both are served from `static/fonts` under the SIL Open Font License, so nothing loads from Google.
@@ -52,7 +52,11 @@ Programme PDFs ──► page-exact passages ──► German full-text index (+
    | `MAIL_API_KEY`, `MAIL_FROM` | [Resend](https://resend.com) for address confirmation, password reset and the newsletter. Verify your sending domain in Resend first |
    | `IMPRINT_NAME`, `IMPRINT_ADDRESS`, `IMPRINT_EMAIL` | the legally required *Impressum* |
    | `VOYAGE_API_KEY` | optional, adds semantic search |
-4. **Networking → Generate Domain.** `BASE_URL` defaults to that domain; set it explicitly if you use a custom domain.
+   | `SITE_NAME` | optional, the name shown everywhere (default *Wahlwort*) |
+   | `GOOGLE_SITE_VERIFICATION`, `BING_SITE_VERIFICATION` | optional, the `content` value of the verification meta tag from Google Search Console / Bing Webmaster Tools |
+   | `INDEXNOW_KEY` | optional, any 8–128 letters, digits or dashes; new articles are then announced to Bing & Co. at once via IndexNow |
+   | `PLAUSIBLE_DOMAIN` | optional, a second, external statistics view with [Plausible](https://plausible.io) (cookieless). The built-in statistics need nothing |
+4. **Networking → Generate Domain.** `BASE_URL` defaults to that domain. **Custom domain:** add it under *Networking → Custom Domain*, create the CNAME (and TXT) record Railway shows at your registrar, then set `BASE_URL=https://your-domain.de`. From then on the Railway address and `www.` answer with a permanent redirect to it, so search engines index every page once.
 5. Open the site, **register with an address from `ADMIN_EMAILS`**, and go to **/admin**.
 6. **The library fills itself.** On the first tick after a deploy (about 20 seconds after start), the app downloads the programmes of every group in the 21st Bundestag and the coalition agreement from the official websites, checks them, and imports them. The sources are listed in `src/program-sources.js`:
    - AfD: *Zeit für Deutschland*
@@ -65,6 +69,13 @@ Programme PDFs ──► page-exact passages ──► German full-text index (+
    Every download must pass three checks before it is imported: it is a PDF, it is long enough to be the full version rather than a short one, and it names its own title. If a party has moved its file, the app asks Claude's web search for the current one, restricted to that party's own domains, and checks it the same way. *Admin → Bibliothek* shows the status of each document, and *Fehlende jetzt laden* retries. Other documents can still be added by address or upload. Set `DEFAULT_LIBRARY=off` to switch the automatic import off.
 7. **Check DIP:** in the Railway shell (or locally with the key), run `npm run dip:probe -- 2026-09-24 --raw` for a recent sitting day. Then press *Jetzt aktualisieren* in the admin area. To write an article right away, use *Artikel für Sitzungstag erzeugen*.
 8. **Review `/datenschutz`** (a template) before going public.
+9. **Search engines:** add the site in [Google Search Console](https://search.google.com/search-console) and [Bing Webmaster Tools](https://www.bing.com/webmasters) and submit `/sitemap.xml` (Google News also reads `/news-sitemap.xml`). Search terms only show up there.
+
+## Visitors and search engines
+
+- **Statistics** (`/admin/statistik`): the server counts the pages it delivers to people – no cookie, no script, no third party. A visit is told apart by a hash of IP address, browser and a salt that is replaced and deleted every day, so nobody can be recognised across days. Bots and admins are not counted. It shows visits per day, pages, referrers (Google, Bluesky, …), `utm_source` campaigns (the newsletter links carry `utm_source=newsletter`) and devices. Raw rows are deleted after about 400 days.
+- **SEO:** every page has a description, a canonical address (query strings never make a second one), Open Graph and Twitter cards with `static/og.png`. Articles carry `NewsArticle` and breadcrumb structured data and the sitting date in their title; the landing page carries `WebSite`, `Organization` and `FAQPage`. `/sitemap.xml`, `/news-sitemap.xml`, `/robots.txt`, `/feed.xml` and a web app manifest are generated from the database.
+- **The landing page** (`/`) is a scroll through the plenary hall, drawn by `static/landing.js` on a canvas without any library: it starts above the seating plan of the 21st Bundestag and ends at the lectern. Readers who prefer reduced motion get the still plan; without JavaScript, a small SVG plan and the text.
 
 ## Local development
 
@@ -105,6 +116,9 @@ src/mitmachen.js     content of the /mitmachen page
 src/resources.js     the only links suggestions may point to
 src/views/           server-rendered pages (everything escaped by default)
 src/views/shapes.js  the two-circle shape language
+src/analytics.js     cookieless visitor statistics
+src/seo.js           robots.txt, sitemaps, manifest, IndexNow
+static/landing.js    the plenary hall animation on the landing page
 static/fonts/        self-hosted fonts (SIL OFL)
 test/                node:test suites with PGlite and fake Claude/DIP/mail
 ```

@@ -141,6 +141,16 @@ export function pdfPageUrl(sourceUrl, page) {
 // A dot of colour per party, so a reader can find their party in a long
 // comparison at a glance. A class rather than an inline style, because the
 // Content-Security-Policy allows no inline styles. Unknown parties get grey.
+// The groups in the order they sit in the plenary hall, from left to right as
+// seen from the President's chair (21st Bundestag). Everything that lists
+// parties uses this order: it is the Bundestag's own, so it favours nobody.
+// Documents that belong to no single group (the coalition agreement) go last.
+const SEAT_ORDER = ['p-linke', 'p-bsw', 'p-gruene', 'p-spd', 'p-ssw', 'p-fdp', 'p-union', 'p-afd', 'p-other', 'p-koalition'];
+
+export const seatRank = (party) => SEAT_ORDER.indexOf(partyClass(party));
+
+export const bySeat = (a, b) => seatRank(a.party) - seatRank(b.party) || String(a.party).localeCompare(String(b.party), 'de');
+
 export function partyClass(party) {
   const p = String(party || '').toLowerCase();
   if (/koalition|cdu.*spd|spd.*cdu/.test(p)) return 'p-koalition';

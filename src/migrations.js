@@ -146,4 +146,28 @@ alter table programs add column source_key text;
 create unique index programs_source_key_idx on programs(source_key) where source_key is not null;
 `,
   },
+  {
+    id: 3,
+    sql: `
+-- Visitor statistics without cookies (src/analytics.js): one row per page
+-- delivered to a person. "visitor" is a hash with a salt that changes daily.
+create table page_views (
+  id bigserial primary key,
+  day date not null,
+  path text not null,
+  referrer text not null default '',
+  source text not null default '',
+  device text not null default '',
+  visitor text not null,
+  created_at timestamptz not null default now()
+);
+create index page_views_day_idx on page_views(day);
+create index page_views_created_idx on page_views(created_at);
+
+create table analytics_salts (
+  day date primary key,
+  salt text not null
+);
+`,
+  },
 ];

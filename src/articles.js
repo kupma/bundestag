@@ -18,7 +18,7 @@
 
 import { fetchDetails, IN_DEPTH_MIN_IMPORTANCE } from './dip.js';
 import { findVotePassages } from './protocol.js';
-import { KINDS, pdfPageUrl } from './programs.js';
+import { bySeat, KINDS, pdfPageUrl } from './programs.js';
 import { LEVEL_KEYS, LEVELS, RESOURCE_KEYS, RESOURCES } from './resources.js';
 import { loadVectors, retrievePassages } from './retrieval.js';
 import { formatDateDe, mapLimit, quoteIsIn, truncate } from './text.js';
@@ -28,9 +28,9 @@ export const VOTES = ['dafür', 'dagegen', 'enthalten', 'gespalten', 'unbekannt'
 
 export async function readyPrograms(db) {
   const { rows } = await db.query(
-    `select id, slug, party, title, kind, election, source_url from programs where status = 'ready' order by kind desc, party`,
+    `select id, slug, party, title, kind, election, source_url from programs where status = 'ready'`,
   );
-  return rows;
+  return rows.sort(bySeat);
 }
 
 // --- prompts -------------------------------------------------------------------------

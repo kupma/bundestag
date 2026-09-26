@@ -1,10 +1,10 @@
 import { escapeHtml, html, paragraphs, raw } from '../html.js';
 import { THEMES } from '../mitmachen.js';
-import { KINDS, partyClass } from '../programs.js';
+import { bySeat, KINDS, partyClass } from '../programs.js';
 import { isExternal, LEVELS, RESOURCES } from '../resources.js';
 import { formatDateDe, formatDateTimeDe, truncate } from '../text.js';
 import { ALIGNMENT_LABEL, ALIGNMENT_SHORT, cls, RESULT_LABEL, shortParty, VOTE_LABEL } from './labels.js';
-import { layout, notices } from './layout.js';
+import { DEFAULT_DESCRIPTION, layout, notices, organization, TAGLINE } from './layout.js';
 import { themeIcon, venn } from './shapes.js';
 
 const plural = (n, one, many) => `${n} ${Number(n) === 1 ? one : many}`;
@@ -72,16 +72,111 @@ function preparingNote({ preparing = [], lastSyncAt = null, programCount }) {
   return lastSyncAt ? html`<p class="meta">Zuletzt beim Bundestag nachgesehen: ${formatDateTimeDe(lastSyncAt)}.</p>` : '';
 }
 
+// The landing page: a scroll through the plenary hall. It starts high above
+// the seats and ends at the lectern, looking at the members – the reader's
+// place. static/landing.js draws the hall; without it the steps are plain
+// text on paper, and nothing is lost.
+const FAQ = [
+  ['Was ist das hier?', (n) => `${n} vergleicht nach jedem Sitzungstag die Beschlüsse des Deutschen Bundestags mit den Wahlprogrammen der Parteien und dem Koalitionsvertrag. Für jeden Beschluss steht dort, was die Parteien versprochen haben, wie ihre Fraktionen abgestimmt haben und ob das zusammenpasst – mit wörtlichen Zitaten und Seitenangabe.`],
+  ['Woher kommen die Daten?', () => 'Die Beschlüsse stammen aus der offiziellen Parlamentsdokumentation DIP des Bundestags, das Abstimmungsverhalten aus dem Plenarprotokoll. Die Wahlprogramme laden wir direkt von den Websites der Parteien.'],
+  ['Wer entscheidet, ob ein Beschluss zum Programm passt?', () => 'Eine KI (Claude von Anthropic) ordnet ein – aber nur auf Grundlage der gelieferten Dokumente, und jedes Zitat wird vor der Veröffentlichung automatisch Zeichen für Zeichen mit dem Programmtext abgeglichen. Einordnungen ohne überprüfbare Fundstelle werden zurückgezogen. Jede Fundstelle ist verlinkt, damit du selbst nachlesen kannst.'],
+  ['Ist die Seite parteiisch?', () => 'Nein. Wir empfehlen keine Partei, alle Programme werden gleich behandelt, und die Parteien stehen in der Sitzordnung des Bundestags. Die Gestaltung verzichtet bewusst auf Farben, die eine Partei für sich beansprucht.'],
+  ['Wann erscheint ein neuer Artikel?', () => 'Am Morgen nach jedem Sitzungstag. Trägt der Bundestag später weitere Beschlüsse oder das Plenarprotokoll nach, wird der Artikel aktualisiert.'],
+  ['Was kostet das?', () => 'Nichts. Lesen, Kommentieren und der Newsletter sind kostenlos.'],
+];
+
+// The 21st Bundestag, left to right as seen from the President.
+export const PLENUM = [
+  { party: 'Die Linke', short: 'Linke', seats: 64 },
+  { party: 'Bündnis 90/Die Grünen', short: 'Grüne', seats: 85 },
+  { party: 'SPD', short: 'SPD', seats: 120 },
+  { party: 'CDU/CSU', short: 'CDU/CSU', seats: 208 },
+  { party: 'AfD', short: 'AfD', seats: 152 },
+];
+
+function plenumFallback() {
+  // A tiny server-drawn hemicycle for the first paint and for readers
+  // without JavaScript; the canvas replaces it.
+  const total = PLENUM.reduce((n, p) => n + p.seats, 0);
+  let acc = 0;
+  const arcs = PLENUM.map((p) => {
+    const a0 = Math.PI * (1 - acc / total);
+    acc += p.seats;
+    const a1 = Math.PI * (1 - acc / total) + 0.02;
+    const pt = (r, a) => `${(200 + r * Math.cos(a)).toFixed(1)} ${(200 - r * Math.sin(a)).toFixed(1)}`;
+    return `<path d="M${pt(80, a0 - 0.01)} L${pt(180, a0 - 0.01)} A180 180 0 0 1 ${pt(180, a1)} L${pt(80, a1)} A80 80 0 0 0 ${pt(80, a0 - 0.01)}Z"/>`;
+  }).join('');
+  return raw(`<svg class="plenum-fallback" viewBox="0 0 400 215" aria-hidden="true">${arcs}<circle cx="200" cy="205" r="7"/></svg>`);
+}
+
 export function homePage(view, { latest, articles, programCount, preparing = [], lastSyncAt = null }) {
+  const { config } = view;
   const rest = latest ? articles.filter((a) => a.id !== latest.id) : articles;
+  const latestLink = latest ? `/artikel/${latest.slug}` : '/archiv';
   const body = html`
-  ${!view.user
-    ? html`<section class="hero">
-      <h1>Was versprochen war. Was beschlossen wurde.</h1>
-      <p class="lede">Nach jedem Sitzungstag des Bundestags legen wir die Beschlüsse ruhig neben die Wahlprogramme – mit Fundstellen, ohne Aufregung. Und wir zeigen, was du selbst beitragen kannst.</p>
-      <p class="hero-actions"><a class="button" href="/registrieren">Kostenlos registrieren</a><a class="button ghost" href="/mitmachen">Mitmachen</a></p>
-    </section>`
-    : ''}
+  <section class="plenum" id="plenum" aria-label="So funktioniert ${config.siteName}">
+    <div class="plenum-stage" aria-hidden="true">
+      ${plenumFallback()}
+      <canvas class="plenum-canvas" data-plenum="${JSON.stringify(PLENUM.map(({ short, seats: n }) => ({ short, seats: n })))}"></canvas>
+    </div>
+    <div class="plenum-steps">
+      <section class="step step-hero" data-step="0">
+        <div class="step-card">
+          <p class="eyebrow">Der Bundestag, Sitzungstag für Sitzungstag</p>
+          <h1><span class="brand-word">${config.siteName}</span> <span class="claim">${TAGLINE}</span></h1>
+          <p class="lede">Nach jeder Sitzung legen wir die Beschlüsse des Bundestags ruhig neben die Wahlprogramme der Parteien – mit wörtlichen Zitaten, Fundstellen und dem Abstimmungsverhalten. Überparteilich und ohne Aufregung.</p>
+          <p class="hero-actions">
+            ${latest ? html`<a class="button" href="${latestLink}">Neuester Sitzungstag: ${formatDateDe(latest.sitting_date, { weekday: false })}</a>` : ''}
+            <a class="button ghost" href="#schritt-1">So funktioniert’s ↓</a>
+          </p>
+        </div>
+        <p class="scroll-hint" aria-hidden="true">Scrollen, um in den Plenarsaal zu gehen</p>
+      </section>
+      <section class="step" id="schritt-1" data-step="1">
+        <div class="step-card">
+          <p class="step-no">1</p>
+          <h2>630 Sitze, fünf Fraktionen</h2>
+          <p>So sieht der Plenarsaal von oben aus. Von links nach rechts sitzen die Fraktionen Linke, Grüne, SPD, CDU/CSU und AfD, dazu ein Abgeordneter des SSW. In genau dieser Reihenfolge zeigen wir die Parteien überall auf der Seite – es ist die Ordnung des Parlaments, nicht unsere.</p>
+        </div>
+      </section>
+      <section class="step" data-step="2">
+        <div class="step-card">
+          <p class="step-no">2</p>
+          <h2>Vor der Wahl: versprochen</h2>
+          <p>Jede Partei hat aufgeschrieben, was sie vorhat – oft auf mehr als hundert Seiten. Dazu kommt der Koalitionsvertrag. Alle liegen Seite für Seite in unserer öffentlichen <a href="/programme">Bibliothek</a>, durchsuchbar für alle.</p>
+        </div>
+      </section>
+      <section class="step" data-step="3">
+        <div class="step-card">
+          <p class="step-no">3</p>
+          <h2>Im Plenum: beschlossen</h2>
+          <p>An jedem Sitzungstag stimmt der Bundestag ab – über Gesetze, Anträge und Beschlussempfehlungen. Wir lesen die offizielle Parlamentsdokumentation und das Plenarprotokoll: was beschlossen wurde und wie jede Fraktion gestimmt hat.</p>
+        </div>
+      </section>
+      <section class="step" data-step="4">
+        <div class="step-card">
+          <p class="step-no">4</p>
+          <h2>Beides nebeneinander</h2>
+          <p>Am Morgen danach legen wir jeden Beschluss neben jedes Programm. Zwei Kreise zeigen das Ergebnis – links versprochen, rechts beschlossen:</p>
+          ${legend()}
+          <p>Jedes Zitat wird vor der Veröffentlichung Zeichen für Zeichen mit dem Programm abgeglichen und ist bis auf die PDF-Seite verlinkt.</p>
+        </div>
+      </section>
+      <section class="step step-final" data-step="5">
+        <div class="step-card">
+          <p class="step-no">5</p>
+          <h2>Jetzt hast du das Wort.</h2>
+          <p>Du stehst am Rednerpult. Zu jedem Beschluss zeigen wir kleine Schritte, mit denen du selbst etwas bewegen kannst – im Alltag, mit anderen und in der Politik. Ganz gleich, wen du wählst.</p>
+          <p class="hero-actions">
+            <a class="button" href="${latestLink}">${latest ? 'Neuesten Sitzungstag lesen' : 'Zu den Sitzungstagen'}</a>
+            ${view.user ? html`<a class="button ghost" href="/mitmachen">Mitmachen</a>` : html`<a class="button ghost" href="/registrieren">Newsletter abonnieren</a>`}
+          </p>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <div class="wrap landing-after">
   ${latest
     ? html`${feature(latest)}${preparing.length ? preparingNote({ preparing, lastSyncAt, programCount }) : ''}`
     : html`<section class="empty">${venn('teilweise', { size: 'lg' })}
@@ -89,16 +184,49 @@ export function homePage(view, { latest, articles, programCount, preparing = [],
       <p>Die Parlamentsdokumentation trägt die Beschlüsse meist ein bis zwei Tage nach einer Sitzung ein. Sobald sie da sind, erscheint hier automatisch der Artikel.</p>
       ${preparingNote({ preparing, lastSyncAt, programCount })}
     </section>`}
-  <h2 class="section-title">Selbst etwas bewegen</h2>
-  ${themeCards()}
   ${rest.length
     ? html`<h2 class="section-title">Frühere Sitzungstage</h2>${rest.map(listItem)}<p class="meta"><a href="/archiv">Alle Sitzungstage im Archiv →</a></p>`
-    : ''}`;
+    : ''}
+  <h2 class="section-title">Selbst etwas bewegen</h2>
+  ${themeCards()}
+  <section class="faq" aria-labelledby="faq-title">
+    <h2 class="section-title" id="faq-title">Häufige Fragen</h2>
+    ${FAQ.map(([q, a]) => html`<details><summary>${q}</summary><p>${a(config.siteName)}</p></details>`)}
+  </section>
+  </div>`;
   return layout(view, {
     title: '',
-    description: 'Was der Bundestag beschließt – ruhig abgeglichen mit den Wahlprogrammen der Parteien, mit Fundstellen und Ideen zum Mitmachen.',
+    description: DEFAULT_DESCRIPTION,
     body,
     canonical: '/',
+    bodyClass: 'landing',
+    scripts: ['landing'],
+    structured: [
+      {
+        '@context': 'https://schema.org',
+        '@graph': [
+          organization(config),
+          {
+            '@type': 'WebSite',
+            '@id': `${config.baseUrl}/#website`,
+            name: config.siteName,
+            alternateName: TAGLINE,
+            url: `${config.baseUrl}/`,
+            inLanguage: 'de-DE',
+            publisher: { '@id': `${config.baseUrl}/#organisation` },
+            potentialAction: {
+              '@type': 'SearchAction',
+              target: { '@type': 'EntryPoint', urlTemplate: `${config.baseUrl}/programme?q={search_term_string}` },
+              'query-input': 'required name=search_term_string',
+            },
+          },
+          {
+            '@type': 'FAQPage',
+            mainEntity: FAQ.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a(config.siteName) } })),
+          },
+        ],
+      },
+    ],
   });
 }
 
@@ -109,11 +237,17 @@ export function archivePage(view, { articles }) {
     if (!byMonth.has(month)) byMonth.set(month, []);
     byMonth.get(month).push(a);
   }
-  const body = html`<div class="narrow"><h1>Archiv</h1>
+  const body = html`<div class="narrow"><h1>Alle Sitzungstage</h1>
+  <p class="lede">Jeder Sitzungstag des Bundestags seit Start dieser Seite: die Beschlüsse, das Abstimmungsverhalten der Fraktionen und der Abgleich mit den Wahlprogrammen.</p>
   ${articles.length
     ? [...byMonth.entries()].map(([month, list]) => html`<h2 class="section-title">${month}</h2>${list.map(listItem)}`)
     : html`<p>Noch keine Artikel.</p>`}</div>`;
-  return layout(view, { title: 'Archiv', body, canonical: '/archiv' });
+  return layout(view, {
+    title: 'Alle Sitzungstage des Bundestags',
+    description: 'Archiv aller Sitzungstage: Beschlüsse des Bundestags, Abstimmungsverhalten der Fraktionen und der Abgleich mit den Wahlprogrammen – Tag für Tag.',
+    body,
+    canonical: '/archiv',
+  });
 }
 
 // --- article -------------------------------------------------------------------------
@@ -231,8 +365,10 @@ function commentsSection(view, { article, comments, commentError, commentDraft }
 export function articlePage(view, data) {
   const { article } = data;
   const b = article.body || {};
-  const decisions = b.decisions || [];
-  const programs = b.programs || [];
+  // Stored articles keep the order they were written in; show them in seat
+  // order whatever that was.
+  const decisions = (b.decisions || []).map((d) => ({ ...d, parties: [...(d.parties || [])].sort(bySeat) }));
+  const programs = [...(b.programs || [])].sort(bySeat);
   const body = html`<article>
     <header class="article-head">
       <p class="eyebrow">Sitzung des Bundestags vom ${formatDateDe(article.sitting_date)}</p>
@@ -263,7 +399,56 @@ export function articlePage(view, data) {
     </div>
   </article>
   ${commentsSection(view, data)}`;
-  return layout(view, { title: article.title, description: truncate(article.lede, 200), body, canonical: `/artikel/${article.slug}` });
+  const { config } = view;
+  const url = `${config.baseUrl}/artikel/${article.slug}`;
+  const published = new Date(article.published_at).toISOString();
+  const modified = new Date(Math.max(new Date(article.created_at), new Date(article.published_at))).toISOString();
+  const day = formatDateDe(article.sitting_date, { weekday: false });
+  return layout(view, {
+    // The date belongs in the title: people search for "Bundestag 25. September".
+    title: `${article.title} – Bundestag am ${day}`,
+    description: truncate(article.lede, 200),
+    body,
+    canonical: `/artikel/${article.slug}`,
+    ogType: 'article',
+    published,
+    modified,
+    structured: [
+      {
+        '@context': 'https://schema.org',
+        '@graph': [
+          {
+            '@type': 'NewsArticle',
+            '@id': `${url}#artikel`,
+            headline: truncate(article.title, 110),
+            description: article.lede,
+            datePublished: published,
+            dateModified: modified,
+            inLanguage: 'de-DE',
+            mainEntityOfPage: url,
+            url,
+            image: [`${config.baseUrl}/static/og.png`],
+            articleSection: 'Bundestag',
+            keywords: ['Bundestag', 'Wahlprogramm', 'Abstimmung', ...decisions.map((d) => d.headline)].join(', '),
+            about: decisions.map((d) => ({ '@type': 'Thing', name: d.title })),
+            author: { '@id': `${config.baseUrl}/#organisation` },
+            publisher: { '@id': `${config.baseUrl}/#organisation` },
+            isAccessibleForFree: true,
+            commentCount: data.comments.length,
+          },
+          organization(config),
+          {
+            '@type': 'BreadcrumbList',
+            itemListElement: [
+              { '@type': 'ListItem', position: 1, name: 'Start', item: `${config.baseUrl}/` },
+              { '@type': 'ListItem', position: 2, name: 'Sitzungstage', item: `${config.baseUrl}/archiv` },
+              { '@type': 'ListItem', position: 3, name: `Sitzung vom ${day}`, item: url },
+            ],
+          },
+        ],
+      },
+    ],
+  });
 }
 
 // --- mitmachen -----------------------------------------------------------------------
@@ -304,7 +489,7 @@ export function aboutPage(view, { programs }) {
   <h1>Über uns</h1>
   <p class="lede">Vor der Wahl schreiben Parteien auf, was sie vorhaben. Danach entscheidet der Bundestag. ${view.config.siteName} legt beides ruhig nebeneinander – und zeigt, was jede und jeder selbst beitragen kann.</p>
   <h2>Überparteilich</h2>
-  <p>Wir empfehlen keine Partei und bewerten keine. Alle Programme werden gleich behandelt und alphabetisch sortiert. Die Seite selbst verwendet keine Farbe, die eine Partei für sich beansprucht: Parteifarben erscheinen nur als kleiner Punkt zur Orientierung, für alle gleich groß.</p>
+  <p>Wir empfehlen keine Partei und bewerten keine. Alle Programme werden gleich behandelt und so sortiert, wie die Fraktionen im Plenarsaal sitzen – von links nach rechts aus Sicht des Präsidiums, der Koalitionsvertrag zuletzt. Die Seite selbst verwendet keine Farbe, die eine Partei für sich beansprucht: Parteifarben erscheinen nur als kleiner Punkt zur Orientierung, für alle gleich groß.</p>
   <h2>Die zwei Kreise</h2>
   <p>Der linke Kreis steht für das, was versprochen wurde, der rechte für das, was beschlossen wurde. Wie sie sich überlagern, ist die Einordnung:</p>
   ${legend()}
@@ -326,7 +511,12 @@ export function aboutPage(view, { programs }) {
     ? html`<ul>${programs.map((p) => html`<li><a href="/programme/${p.slug}">${p.party}: ${p.title}</a></li>`)}</ul>`
     : html`<p>Noch keine Dokumente.</p>`}
   </article>`;
-  return layout(view, { title: 'Über uns', body, canonical: '/ueber' });
+  return layout(view, {
+    title: 'Über uns und Methode',
+    description: 'Wie wir Beschlüsse des Bundestags mit Wahlprogrammen abgleichen: Datenquellen, KI-Einordnung, Zitatprüfung und Grenzen der Methode.',
+    body,
+    canonical: '/ueber',
+  });
 }
 
 export function imprintPage(view) {
@@ -342,7 +532,7 @@ export function imprintPage(view) {
   <h2>Hinweis zu den Inhalten</h2>
   <p>Die Artikel werden automatisiert mit KI erstellt und verlinken ihre Quellen. Für die Richtigkeit der Einordnungen übernehmen wir keine Gewähr; maßgeblich sind die verlinkten Originaldokumente.</p>
   </article>`;
-  return layout(view, { title: 'Impressum', body });
+  return layout(view, { title: 'Impressum', body, noindex: true });
 }
 
 export function privacyPage(view) {
@@ -357,7 +547,9 @@ export function privacyPage(view) {
     <li><strong>Konto:</strong> E-Mail-Adresse, Anzeigename, Passwort (nur als Hash gespeichert), Zeitpunkt der Registrierung und der E-Mail-Bestätigung. Zweck: Diskussion und Newsletter (Art. 6 Abs. 1 lit. b DSGVO).</li>
     <li><strong>Kommentare:</strong> Text, Zeitpunkt und dein Anzeigename sind öffentlich sichtbar.</li>
     <li><strong>Newsletter:</strong> Nur mit ausdrücklicher Einwilligung und bestätigter E-Mail-Adresse (Double-Opt-in, Art. 6 Abs. 1 lit. a DSGVO). Abbestellen jederzeit über den Link in jeder E-Mail oder im Konto.</li>
-    <li><strong>Sitzungs-Cookie:</strong> Ein technisch notwendiges Cookie hält dich angemeldet. Es gibt keine Tracking- oder Werbe-Cookies und keine Analyse-Tools.</li>
+    <li><strong>Sitzungs-Cookie:</strong> Ein technisch notwendiges Cookie hält dich angemeldet. Es gibt keine Tracking- oder Werbe-Cookies.</li>
+    <li><strong>Besucherstatistik:</strong> Um zu sehen, wie viele Menschen die Seite nutzen, zählt unser Server die aufgerufenen Seiten: Adresse der Seite, die verweisende Website (nur der Domainname), eine grobe Geräteklasse (Desktop, Mobil, Tablet) und ggf. ein Kampagnen-Kürzel aus dem Link (utm_source). Um Besuche zu unterscheiden, bilden wir aus IP-Adresse und Browserkennung zusammen mit einem zufälligen Wert, der jeden Tag neu erzeugt und danach gelöscht wird, eine Prüfsumme. IP-Adresse und Browserkennung selbst speichern wir nicht; eine Wiedererkennung über Tage hinweg ist nicht möglich. Es wird nichts auf deinem Gerät gespeichert. Rechtsgrundlage ist unser berechtigtes Interesse an einer bedarfsgerechten Gestaltung des Angebots (Art. 6 Abs. 1 lit. f DSGVO). Die Daten werden nach spätestens 400 Tagen gelöscht.</li>
+    ${config.plausible.domain ? html`<li><strong>Plausible Analytics:</strong> Zusätzlich nutzen wir Plausible (Plausible Insights OÜ, Estland, Server in der EU), ebenfalls ohne Cookies und ohne Speicherung personenbezogener Daten auf deinem Gerät.</li>` : ''}
     <li><strong>Schriftarten:</strong> Die Schriften werden von unserem eigenen Server geladen; es besteht keine Verbindung zu Google oder anderen Schriftanbietern.</li>
     <li><strong>Server-Logs:</strong> Der Hoster verarbeitet beim Aufruf technisch notwendige Verbindungsdaten.</li>
   </ul>

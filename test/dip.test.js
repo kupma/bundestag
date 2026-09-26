@@ -88,3 +88,16 @@ test('findVotePassages finds the vote formula for the right agenda item only', (
   assert.equal(findVotePassages('', ['21/1234']), '');
   assert.equal(findVotePassages(SAMPLE_PROTOCOL, ['1/1234']), '', 'no partial number matches');
 });
+
+test('the same positions in another order are the same decisions, so a day can settle', async () => {
+  const positions = samplePositions();
+  assert.deepEqual(extractDecisions([...positions].reverse()), extractDecisions(positions));
+
+  const db = await makeDb();
+  const dip = { positions: async () => positions };
+  await syncDecisions({ db, dip }, { start: '2026-09-24', end: '2026-09-24' });
+  dip.positions = async () => [...positions].reverse(); // DIP sorts by last update, which moves
+  const again = await syncDecisions({ db, dip }, { start: '2026-09-24', end: '2026-09-24' });
+  assert.equal(again.changed, 0);
+  await db.close();
+});

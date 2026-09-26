@@ -5,11 +5,13 @@
 // so a tick that runs twice, late, or on two replicas at once does no harm;
 // the advisory lock just saves the second one the work.
 
+import { pruneTraffic } from './analytics.js';
 import { generateArticle, pendingDates, readyPrograms, refreshCandidates } from './articles.js';
 import { importDefaultPrograms } from './default-library.js';
 import { syncDecisions } from './dip.js';
 import { recentFailures, runJob } from './jobs.js';
 import { mailArticle } from './newsletter.js';
+import { pingIndexNow } from './seo.js';
 import { addDays, berlinDate, berlinHour } from './text.js';
 
 const TICK_LOCK = 7243002;
@@ -61,7 +63,10 @@ export async function tick(ctx, { now = new Date(), forceSync = false } = {}) {
     else if (hour >= config.earliestHour) {
       const programs = await readyPrograms(db);
       if (!programs.length) report.notes.push('Die Bibliothek ist noch leer – die Wahlprogramme werden geladen.');
-      let dates = programs.length ? await pendingDates(db, { from, to: addDays(today, -1), ...settle }) : [];
+      // Yesterday's sitting is written the next morning, even if DIP is still
+      // documenting it; step 2b rewrites the article as the rest arrives.
+      const firstDraft = { ...settle, settledBefore: addDays(today, -config.writeAfterDays) };
+      let dates = programs.length ? await pendingDates(db, { from, to: addDays(today, -1), ...firstDraft }) : [];
       if (firstRun && dates.length) {
         const latest = dates[dates.length - 1];
         dates = dates.filter((d) => d >= addDays(latest, -6)).slice(-3);
@@ -96,11 +101,11 @@ export async function tick(ctx, { now = new Date(), forceSync = false } = {}) {
         for (const { date, why } of due) {
           if ((await recentFailures(db, `article:${date}`, 24)) >= MAX_FAILURES_PER_DAY) continue;
           try {
-            await runJob(db, `article:${date}`, (log) => {
+            const r = await runJob(db, `article:${date}`, (log) => {
               log(`Aktualisierung: ${why}`);
               return generateArticle(ctx, date, { force: true, log });
             });
-            report.refreshed.push({ date, why });
+            report.refreshed.push({ date, why, slug: r && r.slug });
           } catch (err) {
             report.notes.push(`Aktualisierung ${date}: ${err.message}`);
           }
@@ -108,6 +113,10 @@ export async function tick(ctx, { now = new Date(), forceSync = false } = {}) {
         }
       }
     }
+
+    // 2c. tell search engines about new and rewritten articles
+    const fresh = [...report.generated.map((g) => g.slug), ...report.refreshed.map((r) => r.slug)].filter(Boolean);
+    if (fresh.length) await pingIndexNow(ctx, [...fresh.map((slug) => `/artikel/${slug}`), '/', '/archiv']);
 
     // 3. letters, in waking hours only
     if (ctx.mailer.configured && hour >= config.earliestHour && hour < 21) {
@@ -126,6 +135,8 @@ export async function tick(ctx, { now = new Date(), forceSync = false } = {}) {
         }
       }
     }
+    // 4. statistics older than about a year are not kept
+    if (hour === 3) await pruneTraffic(db).catch(() => {});
     return report;
   });
   return outcome.ran ? outcome.result : { skipped: 'läuft bereits' };
