@@ -311,21 +311,32 @@ function todo(actions) {
   </section>`;
 }
 
+// Each decision is a fold: closed, it is one line with the result and a
+// verdict per party; open, the whole comparison. Native <details>, so it
+// works without JavaScript; static/article.js opens the one a link points to.
 function decisionSection(d, i) {
-  return html`<section class="decision" id="beschluss-${i + 1}">
-    <h2>${d.headline}</h2>
-    <div class="decision-meta">
-      <span class="result result-${cls(d.result)}">${RESULT_LABEL[d.result] || d.result}</span>
-      ${d.vorgangstyp ? html`<span>${d.vorgangstyp}</span>` : ''}
-      <span class="official-title">${d.title}</span>
+  return html`<details class="decision" id="beschluss-${i + 1}">
+    <summary>
+      <h2>${d.headline}</h2>
+      <span class="fold-icon" aria-hidden="true"></span>
+      <span class="decision-meta">
+        <span class="result result-${cls(d.result)}">${RESULT_LABEL[d.result] || d.result}</span>
+        ${d.vorgangstyp ? html`<span>${d.vorgangstyp}</span>` : ''}
+      </span>
+      <span class="decision-verdicts">${d.parties.map(
+        (p) => html`<span class="${partyClass(p.party)}">${venn(p.alignment, { label: `${p.party}: ${ALIGNMENT_LABEL[p.alignment] || p.alignment}` })}<span class="decision-party">${shortParty(p.party, p.kind)}</span></span>`,
+      )}</span>
+    </summary>
+    <div class="decision-body">
+      <p class="official-title">${d.title}</p>
+      <p>${d.summary}</p>
+      ${d.votesNote ? html`<p class="votes"><strong>Abstimmung</strong><span>${d.votesNote}</span></p>` : ''}
+      <h3>Was in den Programmen steht</h3>
+      <ul class="compare">${d.parties.map(partyRow)}</ul>
+      ${todo(d.actions)}
+      ${d.sources.length ? html`<p class="sources">Quellen: ${d.sources.map((s, j) => html`${j ? ' · ' : ''}<a href="${s.url}" target="_blank" rel="noopener">${s.label}</a>`)}</p>` : ''}
     </div>
-    <p>${d.summary}</p>
-    ${d.votesNote ? html`<p class="votes"><strong>Abstimmung</strong><span>${d.votesNote}</span></p>` : ''}
-    <h3>Was in den Programmen steht</h3>
-    <ul class="compare">${d.parties.map(partyRow)}</ul>
-    ${todo(d.actions)}
-    ${d.sources.length ? html`<p class="sources">Quellen: ${d.sources.map((s, j) => html`${j ? ' · ' : ''}<a href="${s.url}" target="_blank" rel="noopener">${s.label}</a>`)}</p>` : ''}
-  </section>`;
+  </details>`;
 }
 
 function commentsSection(view, { article, comments, commentError, commentDraft }) {
@@ -387,6 +398,9 @@ export function articlePage(view, data) {
     </div>
     ${glance(decisions, programs)}
     <div class="article-body">
+      ${decisions.length
+        ? html`<div class="decisions-head"><h2 class="section-title">Die Beschlüsse im Einzelnen</h2><button type="button" class="link fold-all" hidden>Alle aufklappen</button></div>`
+        : ''}
       ${decisions.map(decisionSection)}
       ${(b.others || []).length
         ? html`<section class="others"><h2>Weitere Beschlüsse des Tages</h2><ul>${b.others.map(
@@ -411,6 +425,7 @@ export function articlePage(view, data) {
     body,
     canonical: `/artikel/${article.slug}`,
     ogType: 'article',
+    scripts: ['article'],
     published,
     modified,
     structured: [

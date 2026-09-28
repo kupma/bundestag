@@ -123,6 +123,8 @@ describe('the website', () => {
     const b = browser(app.base);
     const page = await b.get('/artikel/2026-09-24');
     assert.equal(page.status, 200);
+    assert.match(page.text, /<details class="decision" id="beschluss-1">\s*<summary>/, 'each decision is a fold');
+    assert.match(page.text, /<script src="\/static\/article\.js\?v=[0-9a-f]{10}" defer><\/script>/);
     assert.match(page.text, /Mietpreisbremse bleibt – wie versprochen\?/);
     assert.match(page.text, /Entspricht dem Programm/);
     assert.match(page.text, /Fraktion stimmte mit Ja/);

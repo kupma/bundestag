@@ -16,7 +16,7 @@ const version = (file) => {
     return 'dev';
   }
 };
-export const ASSET_VERSION = { css: version('styles.css'), adminJs: version('admin.js'), landingJs: version('landing.js') };
+export const ASSET_VERSION = { css: version('styles.css'), adminJs: version('admin.js'), landingJs: version('landing.js'), articleJs: version('article.js') };
 
 const NAV = [
   ['/archiv', 'Sitzungstage'],
