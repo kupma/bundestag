@@ -27,6 +27,13 @@ export function venn(alignment, { size = '', label = '' } = {}) {
   );
 }
 
+// The preview's mark: the right circle, what is decided, is still open.
+export const pendingMark = ({ size = '' } = {}) =>
+  raw(
+    `<svg class="venn venn-pending${size ? ` venn-${size}` : ''}" viewBox="0 0 40 22" aria-hidden="true">` +
+      `<circle cx="15" cy="11" r="${R}"/><circle cx="25" cy="11" r="${R}" class="decision-open"/></svg>`,
+  );
+
 export const logoMark = () =>
   raw('<svg class="logo-mark" viewBox="0 0 40 26" aria-hidden="true"><circle cx="14" cy="13" r="11"/><circle cx="26" cy="13" r="11"/></svg>');
 

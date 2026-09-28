@@ -3,6 +3,7 @@ import { THEMES } from '../mitmachen.js';
 import { bySeat, KINDS, partyClass } from '../programs.js';
 import { isExternal, LEVELS, RESOURCES } from '../resources.js';
 import { formatDateDe, formatDateTimeDe, truncate } from '../text.js';
+import { agendaTeaser } from './agenda.js';
 import { ALIGNMENT_LABEL, ALIGNMENT_SHORT, cls, RESULT_LABEL, shortParty, VOTE_LABEL } from './labels.js';
 import { DEFAULT_DESCRIPTION, layout, notices, organization, TAGLINE } from './layout.js';
 import { themeIcon, venn } from './shapes.js';
@@ -82,6 +83,7 @@ const FAQ = [
   ['Wer entscheidet, ob ein Beschluss zum Programm passt?', () => 'Eine KI (Claude von Anthropic) ordnet ein – aber nur auf Grundlage der gelieferten Dokumente, und jedes Zitat wird vor der Veröffentlichung automatisch Zeichen für Zeichen mit dem Programmtext abgeglichen. Einordnungen ohne überprüfbare Fundstelle werden zurückgezogen. Jede Fundstelle ist verlinkt, damit du selbst nachlesen kannst.'],
   ['Ist die Seite parteiisch?', () => 'Nein. Wir empfehlen keine Partei, alle Programme werden gleich behandelt, und die Parteien stehen in der Sitzordnung des Bundestags. Die Gestaltung verzichtet bewusst auf Farben, die eine Partei für sich beansprucht.'],
   ['Wann erscheint ein neuer Artikel?', () => 'Am Morgen nach jedem Sitzungstag. Trägt der Bundestag später weitere Beschlüsse oder das Plenarprotokoll nach, wird der Artikel aktualisiert.'],
+  ['Kann ich sehen, worüber als Nächstes abgestimmt wird?', () => 'Ja, in der Vorschau. Dort steht die Tagesordnung der kommenden Sitzungstage, und die Punkte, an deren Ende abgestimmt wird, stehen vorn – Gesetze, Beschlussempfehlungen und Wahlen. Grundlage ist die offizielle Tagesordnung des Bundestags.'],
   ['Was kostet das?', () => 'Nichts. Lesen, Kommentieren und der Newsletter sind kostenlos.'],
 ];
 
@@ -109,7 +111,7 @@ function plenumFallback() {
   return raw(`<svg class="plenum-fallback" viewBox="0 0 400 215" aria-hidden="true">${arcs}<circle cx="200" cy="205" r="7"/></svg>`);
 }
 
-export function homePage(view, { latest, articles, programCount, preparing = [], lastSyncAt = null }) {
+export function homePage(view, { latest, articles, programCount, preparing = [], lastSyncAt = null, upcoming = [] }) {
   const { config } = view;
   const rest = latest ? articles.filter((a) => a.id !== latest.id) : articles;
   const latestLink = latest ? `/artikel/${latest.slug}` : '/archiv';
@@ -184,6 +186,7 @@ export function homePage(view, { latest, articles, programCount, preparing = [],
       <p>Die Parlamentsdokumentation trägt die Beschlüsse meist ein bis zwei Tage nach einer Sitzung ein. Sobald sie da sind, erscheint hier automatisch der Artikel.</p>
       ${preparingNote({ preparing, lastSyncAt, programCount })}
     </section>`}
+  ${agendaTeaser(upcoming)}
   ${rest.length
     ? html`<h2 class="section-title">Frühere Sitzungstage</h2>${rest.map(listItem)}<p class="meta"><a href="/archiv">Alle Sitzungstage im Archiv →</a></p>`
     : ''}
@@ -516,6 +519,7 @@ export function aboutPage(view, { programs }) {
     <li><strong>Bibliothek:</strong> Die Wahlprogramme liegen als PDF vor. Wir zerlegen sie in kurze Passagen, von denen jede genau eine Seite hat, und machen sie durchsuchbar. Die <a href="/programme">Bibliothek</a> ist öffentlich.</li>
     <li><strong>Einordnung:</strong> Eine KI (Claude von Anthropic) vergleicht jeden Beschluss mit den passendsten Passagen jedes Programms. Sie darf nur die gelieferten Dokumente verwenden und muss wörtlich zitieren.</li>
     <li><strong>Prüfung:</strong> Bevor ein Artikel erscheint, prüft ein Programm jedes Zitat Zeichen für Zeichen gegen den Programmtext. Nicht auffindbare Zitate werden gestrichen; eine Einordnung ohne belegbare Fundstelle wird zurückgezogen.</li>
+    <li><strong>Vorschau:</strong> Die <a href="/vorschau">Vorschau</a> liest die offizielle Tagesordnung des Bundestags. Ob an einem Punkt abgestimmt wird, steht in ihrer Sprache: Zweite und dritte Beratung eines Gesetzentwurfs und die Beratung einer Beschlussempfehlung enden mit einer Abstimmung, eine erste Beratung mit der Überweisung in die Ausschüsse. Anträge ohne Ausschussbericht werden meist überwiesen und stehen deshalb unter „Abstimmung möglich“.</li>
     <li><strong>Was du tun kannst:</strong> Zu jedem Beschluss schlagen wir kleine Schritte vor – für dich, mit anderen oder in der Politik. Sie sollen unabhängig davon hilfreich sein, wie du zu dem Beschluss stehst. Links führen nur zu einer festen, von uns geprüften Liste von Angeboten.</li>
   </ol>
   <p>Seitenangaben beziehen sich auf die Seite im PDF, nicht auf die gedruckte Seitenzahl.</p>

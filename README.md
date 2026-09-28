@@ -4,6 +4,8 @@ What the Bundestag decides, and what the parties promised beforehand.
 
 After every sitting day of the German Bundestag, this site publishes an article that goes through the day's decisions and compares each one with the parties' election programmes (and the coalition agreement). The comparison covers how each parliamentary group voted and whether the decision matches, partly matches or contradicts its programme. Every verdict links to the page in the programme PDF where the promise is written. Readers can register, comment on the articles, and get each article by email.
 
+The **/vorschau** page looks ahead: the agenda of the coming sitting days, with the items that end in a vote first (see *The preview* below).
+
 The site is also meant to leave people calmer and more capable, not more agitated. Every article ends each decision with **"Was du tun kannst"**, a few small steps at three levels: for yourself, with others, and in politics. It also says where the parliamentary groups agreed (**"Gemeinsamkeiten"**). The **/mitmachen** page collects practical, non-partisan ways to contribute: staying calmly informed, shopping with impact, everyday democracy, and community.
 
 The site itself is in German. Code and docs are in English.
@@ -29,7 +31,15 @@ Programme PDFs ──► page-exact passages ──► German full-text index (+
 - **How the groups voted** isn't in DIP's structured data. It is in the plenary protocol, in the President's vote formula ("mit den Stimmen der … gegen die Stimmen der …"). `src/protocol.js` finds these sentences next to the decision's Drucksache numbers and passes them to Claude.
 - **The library** splits each PDF into passages of about 900 characters. A passage never crosses a page, so every citation has an exact page number and a link `…pdf#page=N`. Search uses Postgres full-text search with the German stemmer. With `VOYAGE_API_KEY` set, it also uses vector similarity, fused with reciprocal rank fusion.
 - **Claude** (`claude-opus-5`, adaptive thinking, structured outputs) is called roughly `2 + number of decisions` times per article. Requests opt into server-side refusal fallbacks (`fallbacks: "default"`), because parliamentary topics such as defence and extremism can trip a safety classifier.
-- **Timing:** a built-in clock ticks every 15 minutes. It fetches DIP hourly and never writes about the current day. Yesterday's sitting is written the next morning (from 06:00 Berlin time), or earlier once its data has stopped changing for 12 hours. DIP records a sitting's decisions over one or two days, so the article is rewritten as the rest arrives (once the new data has been quiet for 12 hours, or the day is two days old). If DIP adds decisions later, or the plenary protocol (with the votes) only appears after the article, the article is rewritten; the newsletter is not sent again. On the very first run the app looks back four weeks and writes the most recent sitting week, so a new site does not start empty. It stays quiet before 06:00 Berlin time and gives up on a date after 3 failures in 24 hours. Emails go out between 06:00 and 21:00, and only for sitting days of the last three days.
+- **Timing:** a built-in clock ticks every 15 minutes (the preview's agenda has its own schedule, see *The preview*). It fetches DIP hourly and never writes about the current day. Yesterday's sitting is written the next morning (from 06:00 Berlin time), or earlier once its data has stopped changing for 12 hours. DIP records a sitting's decisions over one or two days, so the article is rewritten as the rest arrives (once the new data has been quiet for 12 hours, or the day is two days old). If DIP adds decisions later, or the plenary protocol (with the votes) only appears after the article, the article is rewritten; the newsletter is not sent again. On the very first run the app looks back four weeks and writes the most recent sitting week, so a new site does not start empty. It stays quiet before 06:00 Berlin time and gives up on a date after 3 failures in 24 hours. Emails go out between 06:00 and 21:00, and only for sitting days of the last three days.
+
+## The preview
+
+`/vorschau` shows what the Bundestag is going to decide next, and the home page sums up the next sitting week in a card.
+
+- **Source:** the official agenda, the data behind [bundestag.de/tagesordnungen](https://www.bundestag.de/tagesordnungen). The site loads it as JSON from `/apps/plenar/plenar/conferenceWeekJSON?year=…&week=…` (ISO calendar weeks); each answer names that week's sitting days and points to the next sitting week. No key is needed. The format follows the open-source [DEMOCRACY](https://github.com/demokratie-live/democracy-development) app, which reads the same address. `src/agenda.js` is the only place to adjust if a field is named differently; `npm run agenda:probe` shows what comes back.
+- **Which items are votes** is not a field, it is in the agenda's wording: *Zweite und dritte Beratung* of a bill, *Beratung der Beschlussempfehlung* of a committee, elections, the budget's *Einzelpläne* and the *Abschließende Beratungen ohne Aussprache* end in a vote; *Erste Beratung* and *Überweisungen im vereinfachten Verfahren* end in a referral to committee. A motion without a committee report (*Beratung des Antrags*) is usually referred, so it is listed under "Abstimmung möglich". Checked against 173 agenda weeks of the 18th and 19th Bundestag: of the items marked as a vote, 99.8 % were voted on; 87 % of all votes were marked as one, and 96 % as a vote or a possible one. Items with several parts ("a) … b) …") are split, since a first reading and a final vote often share one item.
+- **Timing:** the clock fetches the current week and the next two sitting weeks every two hours (recess weeks are skipped within a small request budget). A day that disappears from the agenda is removed; a day not confirmed for a week is no longer shown. `AGENDA=off` switches it off.
 
 ## Design
 
@@ -93,6 +103,7 @@ Scripts (all read the same environment variables, so they also work with `railwa
 | Command | |
 |---|---|
 | `npm run dip:probe -- 2026-09-24 [2026-09-26] [--raw]` | what DIP returns and which decisions the app extracts. Read-only |
+| `npm run agenda:probe -- [2026-10-05] [--raw]` | what the Bundestag's agenda returns for the coming weeks and which items the preview counts as votes. Read-only |
 | `npm run ingest -- --defaults` | import the standard library now (what the clock does on its own) |
 | `npm run ingest -- --party SPD --title "…" --election "Bundestagswahl 2025" --url https://…pdf [--file local.pdf] [--kind koalitionsvertrag]` | import any other programme |
 | `npm run generate -- 2026-09-24 [--force] [--mail]` | (re)write one day's article |
@@ -105,6 +116,7 @@ src/app.js           routes, forms, sessions, CSRF (Origin check), admin actions
 src/articles.js      the article pipeline and its checks
 src/dip.js           DIP client, decision extraction, sync
 src/protocol.js      vote formulas from the plenary protocol
+src/agenda.js        the agenda of the coming sitting days, and which items are votes
 src/programs.js      PDF import, passages
 src/program-sources.js  the standard library: official PDF addresses
 src/default-library.js  downloads, checks and imports the standard library
@@ -116,6 +128,7 @@ src/mitmachen.js     content of the /mitmachen page
 src/resources.js     the only links suggestions may point to
 src/views/           server-rendered pages (everything escaped by default)
 src/views/shapes.js  the two-circle shape language
+src/views/agenda.js  the preview page (/vorschau) and its card on the home page
 src/analytics.js     cookieless visitor statistics
 src/seo.js           robots.txt, sitemaps, manifest, IndexNow
 static/landing.js    the plenary hall animation on the landing page

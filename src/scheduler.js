@@ -1,10 +1,12 @@
 // The clock. Every quarter of an hour: import any standard programme that is
-// still missing, fetch new decisions from DIP (at most hourly), write the
+// still missing, fetch new decisions from DIP (at most hourly) and the agenda
+// of the coming sitting days (every two hours), write the
 // article for one finished sitting day (or refresh one that DIP has added to
 // since), and send the newsletter for articles that have not gone out yet. Each step is idempotent,
 // so a tick that runs twice, late, or on two replicas at once does no harm;
 // the advisory lock just saves the second one the work.
 
+import { syncAgenda } from './agenda.js';
 import { pruneTraffic } from './analytics.js';
 import { generateArticle, pendingDates, readyPrograms, refreshCandidates } from './articles.js';
 import { importDefaultPrograms } from './default-library.js';
@@ -17,14 +19,17 @@ import { addDays, berlinDate, berlinHour } from './text.js';
 const TICK_LOCK = 7243002;
 const TICK_EVERY_MS = 15 * 60 * 1000;
 const SYNC_EVERY_MS = 55 * 60 * 1000;
+// The agenda changes by the day (added items, the next week's plan), not by
+// the minute.
+const AGENDA_EVERY_MS = 115 * 60 * 1000;
 const MAX_FAILURES_PER_DAY = 3;
 
-const state = { lastSync: 0 };
+const state = { lastSync: 0, lastAgenda: 0 };
 
 export async function tick(ctx, { now = new Date(), forceSync = false } = {}) {
   const { db, config } = ctx;
   const outcome = await db.tryLock(TICK_LOCK, async () => {
-    const report = { sync: null, library: null, generated: [], refreshed: [], mailed: [], notes: [] };
+    const report = { sync: null, agenda: null, library: null, generated: [], refreshed: [], mailed: [], notes: [] };
     const today = berlinDate(now);
     const hour = berlinHour(now);
     // Until the first article exists, look back far enough to find the most
@@ -54,6 +59,16 @@ export async function tick(ctx, { now = new Date(), forceSync = false } = {}) {
         synced = true;
       } catch (err) {
         report.notes.push(`DIP: ${err.message}`);
+      }
+    }
+
+    // 1b. what is coming: the agenda of the next sitting days, for the preview
+    if (ctx.agenda && (forceSync || now.getTime() - state.lastAgenda > AGENDA_EVERY_MS)) {
+      state.lastAgenda = now.getTime();
+      try {
+        report.agenda = await runJob(db, 'tagesordnung', (log) => syncAgenda(ctx, { today, log }));
+      } catch (err) {
+        report.notes.push(`Tagesordnung: ${err.message}`);
       }
     }
 

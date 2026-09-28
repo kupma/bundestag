@@ -170,4 +170,18 @@ create table analytics_salts (
 );
 `,
   },
+  {
+    id: 4,
+    sql: `
+-- The Bundestag's agenda for the coming sitting days (src/agenda.js), one row
+-- per sitting day, for the preview on /vorschau.
+create table agenda_days (
+  sitting_date text primary key,
+  session int,
+  items jsonb not null,
+  fetched_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+`,
+  },
 ];
