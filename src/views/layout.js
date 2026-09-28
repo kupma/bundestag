@@ -20,6 +20,7 @@ export const ASSET_VERSION = { css: version('styles.css'), adminJs: version('adm
 
 const NAV = [
   ['/archiv', 'Sitzungstage'],
+  ['/vorschau', 'Vorschau'],
   ['/mitmachen', 'Mitmachen'],
   ['/programme', 'Bibliothek'],
   ['/ueber', 'Über uns'],

@@ -11,6 +11,7 @@ const iso = (d) => new Date(d).toISOString();
 export const STATIC_PAGES = [
   { path: '/', changefreq: 'daily', priority: '1.0' },
   { path: '/archiv', changefreq: 'daily', priority: '0.8' },
+  { path: '/vorschau', changefreq: 'daily', priority: '0.7' },
   { path: '/mitmachen', changefreq: 'monthly', priority: '0.6' },
   { path: '/programme', changefreq: 'monthly', priority: '0.6' },
   { path: '/ueber', changefreq: 'monthly', priority: '0.5' },

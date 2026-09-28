@@ -28,6 +28,27 @@ export const RESULT_LABEL = {
   sonstiges: 'Beschlossen',
 };
 
+// What an agenda item announces (src/agenda.js), for the preview.
+export const AGENDA_KIND_LABEL = {
+  gesetz: 'Abstimmung über ein Gesetz',
+  beschlussempfehlung: 'Abstimmung über eine Beschlussempfehlung',
+  abschliessend: 'Abstimmungen ohne Aussprache',
+  wahl: 'Wahl im Plenum',
+  antrag: 'Antrag – meist Überweisung, Abstimmung möglich',
+  ueberweisung: 'Erste Lesung – Überweisung in die Ausschüsse',
+  sonstiges: '',
+};
+
+// The same, for one part of an item ("a) …, b) …").
+export const AGENDA_PART_LABEL = {
+  gesetz: 'Gesetz',
+  beschlussempfehlung: 'Beschlussempfehlung',
+  wahl: 'Wahl',
+  antrag: 'Antrag',
+  ueberweisung: 'Erste Lesung',
+  sonstiges: '',
+};
+
 // Short column headings for the overview table.
 export function shortParty(party, kind) {
   const p = String(party || '').toLowerCase();

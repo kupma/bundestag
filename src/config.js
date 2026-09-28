@@ -44,6 +44,11 @@ export function loadConfig(env = process.env) {
     dipApiKey: env.DIP_API_KEY || '',
     dipBaseUrl: (env.DIP_BASE_URL || 'https://search.dip.bundestag.de/api/v1').replace(/\/+$/, ''),
 
+    // The agenda of the coming sitting days, for the preview (/vorschau).
+    // Public data from bundestag.de; no key needed.
+    agenda: env.AGENDA !== 'off',
+    agendaBaseUrl: (env.AGENDA_BASE_URL || 'https://www.bundestag.de/apps/plenar/plenar').replace(/\/+$/, ''),
+
     // Optional: semantic search on top of the German full-text search.
     voyageApiKey: env.VOYAGE_API_KEY || '',
     voyageModel: env.VOYAGE_MODEL || 'voyage-3.5',

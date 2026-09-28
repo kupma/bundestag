@@ -11,6 +11,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { upcomingAgenda } from './agenda.js';
 import { createTracker, shouldCount, trafficReport } from './analytics.js';
 import { generateArticle } from './articles.js';
 import {
@@ -51,6 +52,7 @@ import {
   verifyMail,
 } from './views/account.js';
 import { adminPage, statsPage } from './views/admin.js';
+import { previewPage } from './views/agenda.js';
 import { libraryPage, passagePage, programPage } from './views/library.js';
 import { aboutPage, archivePage, articlePage, errorPage, homePage, imprintPage, mitmachenPage, privacyPage, rssFeed } from './views/public.js';
 
@@ -251,8 +253,17 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
         programCount: programs.n,
         preparing: preparing.map((r) => r.sitting_date).reverse(),
         lastSyncAt: lastSync ? lastSync.finished_at : null,
+        upcoming: await upcomingAgenda(db, { today: berlinDate(), limit: 5 }),
       }),
     );
+  });
+
+  // What is coming: the agenda of the next sitting days.
+  route('GET', '/vorschau', async (c) => {
+    const today = berlinDate();
+    const days = await upcomingAgenda(db, { today });
+    const last = await db.one('select max(fetched_at) as at from agenda_days');
+    c.html(previewPage(c.view, { days, today, fetchedAt: last && last.at }));
   });
 
   route('GET', '/mitmachen', async (c) => c.html(mitmachenPage(c.view)));
@@ -594,6 +605,7 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
         notice: notice(c),
         status: {
           dip: !!ctx.dip,
+          agenda: !!ctx.agenda,
           claude: !!ctx.claude,
           mail: mailer.configured,
           voyage: !!ctx.embedder,

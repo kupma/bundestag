@@ -14,6 +14,7 @@ export function adminPage(view, d) {
     <h2>Status</h2>
     <p class="chips">
       ${yes(d.status.dip, 'DIP-API-Key')}
+      ${yes(d.status.agenda, 'Tagesordnung (Vorschau)')}
       ${yes(d.status.claude, `Claude (${config.claudeModel})`)}
       ${yes(d.status.mail, 'E-Mail-Versand')}
       ${yes(d.status.voyage, 'Semantische Suche (optional)')}
@@ -32,7 +33,7 @@ export function adminPage(view, d) {
   <section class="admin-block">
     <h2>Aktionen</h2>
     <div class="admin-actions">
-      <form method="post" action="/admin/tick"><button type="submit">Jetzt aktualisieren</button><p class="meta">Holt neue Beschlüsse aus DIP, schreibt fällige Artikel, verschickt den Newsletter.</p></form>
+      <form method="post" action="/admin/tick"><button type="submit">Jetzt aktualisieren</button><p class="meta">Holt neue Beschlüsse aus DIP und die Tagesordnung der nächsten Sitzungstage, schreibt fällige Artikel, verschickt den Newsletter.</p></form>
       <form method="post" action="/admin/artikel" class="stack">
         <label for="date">Artikel für Sitzungstag erzeugen</label>
         <input id="date" name="date" type="date" required value="${d.suggestedDate || ''}">
