@@ -2,12 +2,14 @@
 // schema (structured outputs), so the article pipeline never has to dig an
 // object out of prose.
 //
-// Refusals: Claude Opus 5's safety classifiers can decline a request, which
-// arrives as a normal response with stop_reason "refusal". Parliamentary
-// debates touch defence, extremism and security policy often enough that this
-// is worth planning for, so every request opts into server-side fallbacks
+// Refusals: Claude's safety classifiers can decline a request, which arrives
+// as a normal response with stop_reason "refusal". Parliamentary debates
+// touch defence, extremism and security policy often enough that this is
+// worth planning for, so every request opts into server-side fallbacks
 // (`fallbacks: "default"`): a declined request is re-run on the model Anthropic
-// recommends for that case, inside the same call.
+// recommends for that case, inside the same call. On Claude Sonnet 5.5 that
+// covers some decline categories, not all; anything still refused becomes a
+// ClaudeError (for one decision's analysis, the article loses that section).
 
 import Anthropic from '@anthropic-ai/sdk';
 
