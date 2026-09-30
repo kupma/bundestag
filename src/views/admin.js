@@ -109,7 +109,7 @@ export function adminPage(view, d) {
             <td><a href="/artikel/${a.slug}">${truncate(a.title, 70)}</a></td>
             <td>${a.status === 'published' ? 'sichtbar' : html`<span class="chip warn">ausgeblendet</span>`}</td>
             <td>${a.mailed_at ? formatDateTimeDe(a.mailed_at) : '–'}</td>
-            <td class="meta">${a.usage ? `${a.usage.calls} Aufrufe, ${Math.round((a.usage.input || 0) / 1000)}k/${Math.round((a.usage.output || 0) / 1000)}k Token` : ''}</td>
+            <td class="meta">${a.usage ? `${a.usage.calls} Aufrufe${a.usage.runs > 1 ? ` in ${a.usage.runs} Fassungen` : ''}, ${Math.round((a.usage.input || 0) / 1000)}k/${Math.round((a.usage.output || 0) / 1000)}k Token` : ''}</td>
             <td>
               <form method="post" action="/admin/artikel/${a.id}/${a.status === 'published' ? 'ausblenden' : 'einblenden'}" class="inline"><button class="link" type="submit">${a.status === 'published' ? 'ausblenden' : 'einblenden'}</button></form>
               ${!a.mailed_at && a.status === 'published' ? html`<form method="post" action="/admin/artikel/${a.id}/versenden" class="inline"><button class="link" type="submit">jetzt versenden</button></form>` : ''}
