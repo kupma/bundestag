@@ -39,7 +39,7 @@ export function loadConfig(env = process.env) {
     pgliteDir: env.PGLITE_DIR || '.data/pglite',
 
     anthropicApiKey: env.ANTHROPIC_API_KEY || '',
-    claudeModel: env.CLAUDE_MODEL || 'claude-opus-5',
+    claudeModel: env.CLAUDE_MODEL || 'claude-sonnet-5-5',
 
     dipApiKey: env.DIP_API_KEY || '',
     dipBaseUrl: (env.DIP_BASE_URL || 'https://search.dip.bundestag.de/api/v1').replace(/\/+$/, ''),
