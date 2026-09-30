@@ -100,7 +100,7 @@ export async function tick(ctx, { now = new Date(), forceSync = false } = {}) {
 
       // 2b. keep recent articles complete: rewrite one when DIP has added
       // decisions since, or once the plenary protocol (with the votes) is out.
-      // Never re-sends the newsletter.
+      // Only what changed goes to Claude again. Never re-sends the newsletter.
       if (programs.length && !report.generated.length) {
         const { changed, withoutProtocol } = await refreshCandidates(db, { from: addDays(today, -config.lookbackDays), ...settle });
         let due = changed.map((date) => ({ date, why: 'neue Beschlüsse in DIP' }));
@@ -118,7 +118,7 @@ export async function tick(ctx, { now = new Date(), forceSync = false } = {}) {
           try {
             const r = await runJob(db, `article:${date}`, (log) => {
               log(`Aktualisierung: ${why}`);
-              return generateArticle(ctx, date, { force: true, log });
+              return generateArticle(ctx, date, { force: true, reuse: true, log });
             });
             report.refreshed.push({ date, why, slug: r && r.slug });
           } catch (err) {

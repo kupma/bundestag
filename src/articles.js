@@ -15,6 +15,12 @@
 //
 // Articles are stored as structured JSON and rendered at request time, so the
 // page design can change without regenerating anything.
+//
+// A rewrite (DIP added a decision, the protocol came out) keeps every analysis
+// whose inputs have not changed, and the frame too if nothing in it changed;
+// only the rest goes to Claude again (see analysisKey).
+
+import { createHash } from 'node:crypto';
 
 import { fetchDetails, IN_DEPTH_MIN_IMPORTANCE } from './dip.js';
 import { findVotePassages } from './protocol.js';
@@ -202,25 +208,30 @@ async function planQueries(claude, decisions) {
   return { map, usage: res.usage };
 }
 
-async function analyzeDecision(claude, d, programs, passages) {
+function votesBlock(d) {
   const det = d.details || {};
-  const votes = det.votes
+  return det.votes
     ? `<protokollauszug>\n${det.votes}\n</protokollauszug>`
     : `<protokollauszug>\n(${det.protocolAvailable ? 'Im Plenarprotokoll wurde zu diesem Beschluss keine Abstimmungsformel gefunden.' : 'Das Plenarprotokoll lag bei Redaktionsschluss noch nicht vor.'})\n</protokollauszug>`;
+}
+
+const programTag = (p) => `<programm id="${p.id}" partei="${attr(p.party)}" art="${KINDS[p.kind] || p.kind}" titel="${attr(p.title)}">`;
+
+async function analyzeDecision(claude, d, programs, passages) {
   const progs = programs
     .map((p) => {
       const list = passages.get(p.id) || [];
       const body = list.length
         ? list.map((c) => `<passage id="${c.id}" seite="${c.page}">\n${c.text}\n</passage>`).join('\n')
         : '(Die Suche hat in diesem Programm keine passende Passage gefunden.)';
-      return `<programm id="${p.id}" partei="${attr(p.party)}" art="${KINDS[p.kind] || p.kind}" titel="${attr(p.title)}">\n${body}\n</programm>`;
+      return `${programTag(p)}\n${body}\n</programm>`;
     })
     .join('\n\n');
-  const prompt = `<beschluss>\n${describeDecision(d)}\n</beschluss>\n\n${votes}\n\n<programme>\n${progs}\n</programme>`;
+  const prompt = `<beschluss>\n${describeDecision(d)}\n</beschluss>\n\n${votesBlock(d)}\n\n<programme>\n${progs}\n</programme>`;
   return claude.json({ system: ANALYSIS_SYSTEM, prompt, schema: ANALYSIS_SCHEMA, effort: 'high', maxTokens: 32000 });
 }
 
-async function writeFrame(claude, date, sections, others) {
+function framePrompt(date, sections, others) {
   const lines = [`Sitzung vom ${formatDateDe(date)}`, ''];
   for (const s of sections) {
     lines.push(`## ${s.headline} (${s.result})`, s.summary);
@@ -229,8 +240,44 @@ async function writeFrame(claude, date, sections, others) {
     lines.push('');
   }
   if (others.length) lines.push('Weitere Beschlüsse:', ...others.map((o) => `- ${o.title} (${o.outcome})`));
-  return claude.json({ system: FRAME_SYSTEM, prompt: lines.join('\n'), schema: FRAME_SCHEMA, effort: 'medium', maxTokens: 8000 });
+  return lines.join('\n');
 }
+
+function writeFrame(claude, prompt) {
+  return claude.json({ system: FRAME_SYSTEM, prompt, schema: FRAME_SCHEMA, effort: 'medium', maxTokens: 8000 });
+}
+
+// --- what a rewrite can keep ----------------------------------------------------------
+
+const fingerprint = (parts) => createHash('sha256').update(parts.join('\u0000')).digest('hex').slice(0, 32);
+
+// Which passages each programme has: re-importing a programme replaces its
+// passages, and with them the ids every citation points to.
+async function libraryStamps(db, programs) {
+  const { rows } = await db.query(
+    `select program_id, min(id)::int as first, count(*)::int as n
+       from program_chunks where program_id = any($1::int[]) group by program_id`,
+    [programs.map((p) => p.id)],
+  );
+  return new Map(rows.map((r) => [r.program_id, `${r.first}+${r.n}`]));
+}
+
+// Everything an analysis is written from, except the search queries and the
+// passages they find – those come from Claude and would differ on every run.
+// Same key, same inputs: the analysis from the previous version still holds.
+// A changed prompt, decision, Drucksache, vote passage or programme library
+// changes the key.
+function analysisKey(d, programs, stamps) {
+  return fingerprint([
+    ANALYSIS_SYSTEM,
+    JSON.stringify(ANALYSIS_SCHEMA),
+    describeDecision(d),
+    votesBlock(d),
+    ...programs.map((p) => `${programTag(p)} ${stamps.get(p.id) || ''}`),
+  ]);
+}
+
+const frameKey = (prompt) => fingerprint([FRAME_SYSTEM, JSON.stringify(FRAME_SCHEMA), prompt]);
 
 // --- checks ------------------------------------------------------------------------
 
@@ -304,11 +351,14 @@ function sourcesOf(d) {
 
 // --- the run -----------------------------------------------------------------------
 
-export async function generateArticle(ctx, date, { force = false, log = () => {} } = {}) {
+// `force` rewrites an existing article; `reuse` lets that rewrite keep what
+// has not changed (the clock's refreshes), where without it every analysis is
+// written anew (the admin's "neu schreiben").
+export async function generateArticle(ctx, date, { force = false, reuse = false, log = () => {} } = {}) {
   const { db, claude, dip, embedder, config } = ctx;
   if (!claude) throw new Error('ANTHROPIC_API_KEY ist nicht gesetzt – ohne Claude kann kein Artikel entstehen.');
 
-  const existing = await db.one('select id from articles where sitting_date = $1', [date]);
+  const existing = await db.one('select id, title, lede, body, usage from articles where sitting_date = $1', [date]);
   if (existing && !force) return { skipped: 'exists', articleId: existing.id };
 
   const programs = await readyPrograms(db);
@@ -348,20 +398,36 @@ export async function generateArticle(ctx, date, { force = false, log = () => {}
     usage.calls++;
   };
 
+  // What the previous version analysed from the same inputs is kept.
+  const stamps = await libraryStamps(db, programs);
+  for (const d of inDepth) d.inputKey = analysisKey(d, programs, stamps);
+  const kept = new Map();
+  if (existing && reuse) {
+    for (const s of existing.body.decisions || []) {
+      const d = inDepth.find((x) => x.id === s.decisionId);
+      if (d && s.inputKey === d.inputKey) kept.set(d.id, s);
+    }
+  }
+  const fresh = inDepth.filter((d) => !kept.has(d.id));
+  if (kept.size) log(`${kept.size} Analysen unverändert übernommen, ${fresh.length} neu`);
+
   // 2. queries
-  const plan = await planQueries(claude, inDepth);
-  add(plan.usage);
+  let plan = { map: new Map() };
+  if (fresh.length) {
+    plan = await planQueries(claude, fresh);
+    add(plan.usage);
+  }
 
   // 3. retrieval
   const programIds = programs.map((p) => p.id);
   let vectors = null;
   let queryVectors = null;
-  if (embedder) {
+  if (embedder && fresh.length) {
     vectors = await loadVectors(db, programIds);
-    if (vectors.size) queryVectors = await embedder.embed(inDepth.map(decisionQueryText), 'query');
+    if (vectors.size) queryVectors = await embedder.embed(fresh.map(decisionQueryText), 'query');
   }
   const passagesByDecision = new Map();
-  for (const [i, d] of inDepth.entries()) {
+  for (const [i, d] of fresh.entries()) {
     const queries = [...(plan.map.get(d.id) || []), d.title.split(/\s+/).slice(0, 6).join(' ')];
     passagesByDecision.set(
       d.id,
@@ -371,10 +437,18 @@ export async function generateArticle(ctx, date, { force = false, log = () => {}
 
   // 4. analyses, three at a time. One decision that fails (a refusal, a
   // truncated answer) costs the article that section, not the whole day.
-  let droppedQuotes = 0;
-  let withdrawn = 0;
   const failed = [];
   const analysed = await mapLimit(inDepth, 3, async (d) => {
+    const beschluesse = d.data.beschluesse || [];
+    const facts = {
+      decisionId: d.id,
+      inputKey: d.inputKey,
+      title: d.title,
+      vorgangstyp: d.vorgangstyp,
+      tenor: beschluesse.length ? beschluesse[beschluesse.length - 1].tenor : '',
+      sources: sourcesOf(d),
+    };
+    if (kept.has(d.id)) return { ...kept.get(d.id), ...facts };
     const passages = passagesByDecision.get(d.id);
     let res;
     try {
@@ -386,25 +460,21 @@ export async function generateArticle(ctx, date, { force = false, log = () => {}
     }
     add(res.usage);
     const checked = checkAnalysis(res.data, programs, passages);
-    droppedQuotes += checked.droppedQuotes;
-    withdrawn += checked.withdrawn;
-    const beschluesse = d.data.beschluesse || [];
     return {
-      decisionId: d.id,
-      title: d.title,
-      vorgangstyp: d.vorgangstyp,
-      tenor: beschluesse.length ? beschluesse[beschluesse.length - 1].tenor : '',
+      ...facts,
       headline: String(res.data.headline || d.title).trim(),
       summary: String(res.data.summary || '').trim(),
       result: res.data.result || d.outcome,
       votesNote: String(res.data.votes_note || '').trim(),
       actions: checkActions(res.data.actions),
-      sources: sourcesOf(d),
       parties: checked.parties,
+      checks: { droppedQuotes: checked.droppedQuotes, withdrawn: checked.withdrawn },
     };
   });
   const sections = analysed.filter(Boolean);
   if (!sections.length) throw failed[0].err;
+  const droppedQuotes = sections.reduce((n, s) => n + s.checks.droppedQuotes, 0);
+  const withdrawn = sections.reduce((n, s) => n + s.checks.withdrawn, 0);
   if (droppedQuotes || withdrawn) log(`Prüfung: ${droppedQuotes} Zitate verworfen, ${withdrawn} Einordnungen ohne Beleg zurückgezogen`);
 
   // 5. frame – decisions whose analysis failed still get listed, briefly
@@ -415,14 +485,23 @@ export async function generateArticle(ctx, date, { force = false, log = () => {}
     outcome: o.outcome,
     tenor: (o.data.beschluesse || []).slice(-1)[0]?.tenor || '',
   }));
-  const frame = await writeFrame(claude, date, sections, otherItems);
-  add(frame.usage);
+  const prompt = framePrompt(date, sections, otherItems);
+  let frame;
+  if (existing && reuse && existing.body.frameKey === frameKey(prompt)) {
+    log('Titel und Einleitung unverändert übernommen');
+    frame = { title: existing.title, lede: existing.lede, intro: existing.body.intro, common_ground: existing.body.commonGround };
+  } else {
+    const res = await writeFrame(claude, prompt);
+    add(res.usage);
+    frame = res.data;
+  }
 
   // 6. store
   const body = {
     version: 1,
-    intro: (frame.data.intro || []).map((p) => String(p).trim()).filter(Boolean),
-    commonGround: String(frame.data.common_ground || '').trim(),
+    intro: (frame.intro || []).map((p) => String(p).trim()).filter(Boolean),
+    commonGround: String(frame.common_ground || '').trim(),
+    frameKey: frameKey(prompt),
     decisions: sections,
     others: otherItems,
     programs: programs.map((p) => ({ id: p.id, party: p.party, title: p.title, kind: p.kind })),
@@ -431,8 +510,13 @@ export async function generateArticle(ctx, date, { force = false, log = () => {}
     // the article once the protocol is published.
     protocolAvailable: !!(protocol && protocol.text),
   };
-  const title = String(frame.data.title || `Bundestag am ${formatDateDe(date)}`).trim();
-  const lede = String(frame.data.lede || '').trim();
+  const title = String(frame.title || `Bundestag am ${formatDateDe(date)}`).trim();
+  const lede = String(frame.lede || '').trim();
+  // The admin table shows what an article has cost over all its versions.
+  const prior = (existing && existing.usage) || {};
+  const total = existing
+    ? { input: (prior.input || 0) + usage.input, output: (prior.output || 0) + usage.output, calls: (prior.calls || 0) + usage.calls, runs: (prior.runs || 1) + 1 }
+    : { ...usage, runs: 1 };
   const chunkIds = [...new Set(sections.flatMap((s) => s.parties.flatMap((p) => p.citations.map((c) => c.chunkId))))];
 
   const article = await db.tx(async (q) => {
@@ -443,7 +527,7 @@ export async function generateArticle(ctx, date, { force = false, log = () => {}
          title = excluded.title, lede = excluded.lede, body = excluded.body,
          model = excluded.model, usage = excluded.usage, created_at = now()
        returning id, slug`,
-      [date, title, lede, JSON.stringify(body), claude.model, JSON.stringify(usage)],
+      [date, title, lede, JSON.stringify(body), claude.model, JSON.stringify(total)],
     );
     await q.query('delete from article_citations where article_id = $1', [row.id]);
     if (chunkIds.length) {

@@ -8,6 +8,16 @@ import { createProgram, ingestProgramPdf } from '../src/programs.js';
 import { tick } from '../src/scheduler.js';
 import { fakeClaude, fakeDip, fakeMailer, makeConfig, makeDb, makePdf, samplePositions } from './helpers.js';
 
+// The Claude calls made since `from`, by kind.
+function callsSince(claude, from) {
+  const calls = claude.calls.slice(from);
+  return {
+    queries: calls.filter((c) => c.schema.required.includes('items')),
+    analyses: calls.filter((c) => c.schema.required.includes('parties')),
+    frames: calls.filter((c) => c.schema.required.includes('lede')),
+  };
+}
+
 async function setup({ programs = true } = {}) {
   const db = await makeDb();
   const ctx = { db, config: makeConfig({ settleHours: 0 }), claude: fakeClaude(), dip: fakeDip(), embedder: null, mailer: fakeMailer() };
@@ -95,7 +105,45 @@ test('an existing article is left alone unless forced', async () => {
   assert.equal((await generateArticle(ctx, '2026-09-24')).skipped, 'exists');
   assert.equal(ctx.claude.calls.length, calls, 'no tokens spent');
   await generateArticle(ctx, '2026-09-24', { force: true });
+  assert.equal(ctx.claude.calls.length, 2 * calls, 'forced without reuse: everything anew');
   assert.equal((await ctx.db.one('select count(*)::int as n from articles')).n, 1);
+  await ctx.db.close();
+});
+
+test('a rewrite with nothing new keeps the article and spends no tokens', async () => {
+  const ctx = await setup();
+  await generateArticle(ctx, '2026-09-24');
+  const before = await ctx.db.one('select title, lede, body, usage from articles');
+  const calls = ctx.claude.calls.length;
+
+  const logs = [];
+  const result = await generateArticle(ctx, '2026-09-24', { force: true, reuse: true, log: (l) => logs.push(l) });
+  assert.equal(ctx.claude.calls.length, calls, 'no Claude call');
+  assert.deepEqual(result.usage, { input: 0, output: 0, calls: 0 });
+  const after = await ctx.db.one('select title, lede, body, usage from articles');
+  assert.equal(after.title, before.title);
+  assert.equal(after.lede, before.lede);
+  assert.deepEqual(after.body, before.body);
+  assert.ok(logs.some((l) => /2 Analysen unverändert übernommen, 0 neu/.test(l)));
+  // The admin table adds up all versions.
+  assert.deepEqual(after.usage, { ...before.usage, runs: 2 });
+  await ctx.db.close();
+});
+
+test('re-importing a programme invalidates the analyses that cite it', async () => {
+  const ctx = await setup();
+  await generateArticle(ctx, '2026-09-24');
+  const calls = ctx.claude.calls.length;
+  // Same text, new passages – and new passage ids for every citation.
+  const spd = await ctx.db.one(`select id from programs where party = 'SPD'`);
+  await ingestProgramPdf({ db: ctx.db }, spd.id, await makePdf([['Wir werden die Mietpreisbremse verlängern und Mieterinnen und Mieter schützen.'], ['Kostenloses Mittagessen in allen Schulen.']]));
+  await generateArticle(ctx, '2026-09-24', { force: true, reuse: true });
+  const since = callsSince(ctx.claude, calls);
+  assert.equal(since.analyses.length, 2);
+  const { body } = await ctx.db.one('select body from articles');
+  const cited = body.decisions.flatMap((s) => s.parties.flatMap((p) => p.citations.map((c) => c.chunkId)));
+  const { n } = await ctx.db.one('select count(*)::int as n from program_chunks where id = any($1::int[])', [cited]);
+  assert.equal(n, new Set(cited).size, 'every citation points at a passage that exists');
   await ctx.db.close();
 });
 
@@ -270,12 +318,23 @@ test('an article is rewritten when DIP adds decisions for its day', async () => 
   assert.equal(before.body.decisions.length, 1);
 
   positions = samplePositions('2026-09-24'); // DIP now also has the motion
+  const calls = ctx.claude.calls.length;
   const report = await tick(ctx, { now: new Date('2026-09-25T10:00:00Z'), forceSync: true });
   assert.deepEqual(report.refreshed.map(({ date, why }) => ({ date, why })), [{ date: '2026-09-24', why: 'neue Beschlüsse in DIP' }]);
   const after = await ctx.db.one('select id, created_at, published_at, body from articles where sitting_date = $1', ['2026-09-24']);
   assert.equal(after.id, articleId, 'same article, comments stay');
   assert.equal(after.body.decisions.length, 2);
   assert.ok(new Date(after.created_at) > new Date(before.created_at));
+
+  // Only the new decision went to Claude; the bill's analysis was kept.
+  const since = callsSince(ctx.claude, calls);
+  assert.equal(since.analyses.length, 1);
+  assert.match(since.analyses[0].prompt, /Titel: Kostenloses Mittagessen/);
+  assert.equal(since.queries.length, 1);
+  assert.doesNotMatch(since.queries[0].prompt, /Mietpreisbremse/);
+  assert.equal(since.frames.length, 1, 'the introduction now covers two decisions');
+  const bill = (body) => body.decisions.find((s) => s.title.includes('Mietpreisbremse'));
+  assert.deepEqual(bill(after.body), bill(before.body));
 
   const quiet = await tick(ctx, { now: new Date('2026-09-25T10:15:00Z'), forceSync: true });
   assert.deepEqual(quiet.refreshed, [], 'no loop');
@@ -297,8 +356,13 @@ test('an article written before the protocol is rewritten once the votes are pub
 
   const withProtocol = { ...fakeDip(), calls: [] };
   ctx.dip = withProtocol;
+  const calls = ctx.claude.calls.length;
   const report = await tick(ctx, { now: new Date('2026-09-25T10:20:00Z'), forceSync: true });
   assert.deepEqual(report.refreshed.map(({ date, why }) => ({ date, why })), [{ date: '2026-09-24', why: 'Plenarprotokoll jetzt verfügbar' }]);
+  // The votes are new input for every decision, so every decision is analysed again.
+  const { analyses } = callsSince(ctx.claude, calls);
+  assert.equal(analyses.length, 2);
+  assert.ok(analyses.every((a) => /mit den Stimmen der Fraktion/.test(a.prompt)));
   const body = (await ctx.db.one('select body from articles')).body;
   assert.equal(body.protocolAvailable, true);
   assert.equal(ctx.mailer.sent.length, 1, 'the newsletter is not sent again');
