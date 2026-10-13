@@ -49,6 +49,16 @@ export const AGENDA_PART_LABEL = {
   sonstiges: '',
 };
 
+// The 21st Bundestag, left to right as seen from the President. The landing
+// page draws it; the explainer counts the coalition's majority from it.
+export const PLENUM = [
+  { party: 'Die Linke', short: 'Linke', seats: 64 },
+  { party: 'Bündnis 90/Die Grünen', short: 'Grüne', seats: 85 },
+  { party: 'SPD', short: 'SPD', seats: 120, coalition: true },
+  { party: 'CDU/CSU', short: 'CDU/CSU', seats: 208, coalition: true },
+  { party: 'AfD', short: 'AfD', seats: 152 },
+];
+
 // Short column headings for the overview table.
 export function shortParty(party, kind) {
   const p = String(party || '').toLowerCase();

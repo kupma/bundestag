@@ -55,6 +55,7 @@ test('generateArticle writes a checked, structured article', async () => {
 
   const bill = body.decisions.find((d) => d.title.includes('Mietpreisbremse'));
   assert.equal(bill.votesNote, 'CDU/CSU und SPD dafür, AfD dagegen.');
+  assert.deepEqual(bill.positions, ['2. Beratung', '3. Beratung'], 'both readings, so the bill was passed that day');
   // Suggestions: at most three, known levels only, links only from the curated list.
   assert.deepEqual(bill.actions, [
     { level: 'alltag', text: 'Prüfe mit dem Mietspiegel, ob deine Miete zulässig ist.', resource: 'mieterbund' },

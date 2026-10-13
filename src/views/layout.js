@@ -21,6 +21,7 @@ export const ASSET_VERSION = { css: version('styles.css'), adminJs: version('adm
 const NAV = [
   ['/archiv', 'Sitzungstage'],
   ['/vorschau', 'Vorschau'],
+  ['/bundestag-erklaert', 'Grundlagen'],
   ['/mitmachen', 'Mitmachen'],
   ['/programme', 'Bibliothek'],
   ['/ueber', 'Über uns'],
@@ -120,7 +121,7 @@ ${body}
       <p class="meta">Daten: <a href="https://dip.bundestag.de">DIP des Deutschen Bundestags</a> und die Wahlprogramme der Parteien. Einordnung mit KI, jede Fundstelle verlinkt.</p>
     </div>
     <nav class="footer-links" aria-label="Weitere Seiten">
-      <a href="/archiv">Archiv</a><a href="/ueber#methode">Methode</a><a href="/mitmachen">Mitmachen</a><a href="/feed.xml">RSS</a><a href="/impressum">Impressum</a><a href="/datenschutz">Datenschutz</a>
+      <a href="/archiv">Archiv</a><a href="/bundestag-erklaert">Grundlagen</a><a href="/ueber#methode">Methode</a><a href="/mitmachen">Mitmachen</a><a href="/feed.xml">RSS</a><a href="/impressum">Impressum</a><a href="/datenschutz">Datenschutz</a>
     </nav>
   </div>
 </footer>

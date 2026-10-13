@@ -6,6 +6,8 @@ After every sitting day of the German Bundestag, this site publishes an article 
 
 The **/vorschau** page looks ahead: the agenda of the coming sitting days, with the items that end in a vote first (see *The preview* below).
 
+The **/bundestag-erklaert** page (*Grundlagen* in the menu) explains, for readers without any background, how the Bundestag decides: what the results on this site mean, the way of a bill from first reading to coming into force, motions and other decisions that are not laws, how votes and majorities work, who else takes part, and a short glossary. In every article, each decision carries a short **"Was heißt das?"** that says what its result means: a bill the Bundestag passed still has to go through the Bundesrat and the Federal President (with a small diagram of that way), an adopted motion is no law, a rejected one is the usual case. That text is written by hand in `src/views/explainer.js` from the decision's Vorgangstyp, result and readings, not generated, so it also works for articles written before it existed.
+
 The site is also meant to leave people calmer and more capable, not more agitated. Every article ends each decision with **"Was du tun kannst"**, a few small steps at three levels: for yourself, with others, and in politics. It also says where the parliamentary groups agreed (**"Gemeinsamkeiten"**). The **/mitmachen** page collects practical, non-partisan ways to contribute: staying calmly informed, shopping with impact, everyday democracy, and community.
 
 The site itself is in German. Code and docs are in English.
@@ -129,6 +131,7 @@ src/resources.js     the only links suggestions may point to
 src/views/           server-rendered pages (everything escaped by default)
 src/views/shapes.js  the two-circle shape language
 src/views/agenda.js  the preview page (/vorschau) and its card on the home page
+src/views/explainer.js  the explainer (/bundestag-erklaert) and the "Was heißt das?" of each decision
 src/analytics.js     cookieless visitor statistics
 src/seo.js           robots.txt, sitemaps, manifest, IndexNow
 static/landing.js    the plenary hall animation on the landing page

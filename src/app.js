@@ -53,6 +53,7 @@ import {
 } from './views/account.js';
 import { adminPage, statsPage } from './views/admin.js';
 import { previewPage } from './views/agenda.js';
+import { EXPLAINER_PATH, explainerPage } from './views/explainer.js';
 import { libraryPage, passagePage, programPage } from './views/library.js';
 import { aboutPage, archivePage, articlePage, errorPage, homePage, imprintPage, mitmachenPage, privacyPage, rssFeed } from './views/public.js';
 
@@ -267,6 +268,7 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
   });
 
   route('GET', '/mitmachen', async (c) => c.html(mitmachenPage(c.view)));
+  route('GET', EXPLAINER_PATH, async (c) => c.html(explainerPage(c.view)));
 
   route('GET', '/archiv', async (c) => {
     const { rows } = await db.query(`${ARTICLE_LIST} limit 1000`);

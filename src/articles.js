@@ -69,7 +69,7 @@ Jedes gelieferte Programm kommt in "parties" genau einmal vor, mit seiner id als
 Außerdem:
 - "headline": knappe Zwischenüberschrift für diesen Beschluss (höchstens etwa 80 Zeichen).
 - "summary": 2–4 Sätze, was beschlossen wurde und was es konkret bedeutet – verständlich für Menschen ohne Vorwissen.
-- "result": das Ergebnis der Abstimmung.
+- "result": das Ergebnis für die Vorlage selbst (den Gesetzentwurf, den Antrag). Folgt der Bundestag einer Beschlussempfehlung, die Vorlage abzulehnen, ist das Ergebnis "abgelehnt" – auch wenn das Protokoll von der Annahme der Beschlussempfehlung spricht.
 - "votes_note": 1–2 Sätze zum Abstimmungsverhalten laut Protokoll; leer, wenn der Protokollauszug dazu nichts hergibt.
 
 Schließlich "actions": 0–3 kleine, konkrete Schritte, mit denen Leserinnen und Leser zum Thema dieses Beschlusses etwas Gutes beitragen können – unabhängig davon, wie sie zum Beschluss stehen.
@@ -446,6 +446,8 @@ export async function generateArticle(ctx, date, { force = false, reuse = false,
       title: d.title,
       vorgangstyp: d.vorgangstyp,
       tenor: beschluesse.length ? beschluesse[beschluesse.length - 1].tenor : '',
+      // "2. Beratung", "3. Beratung": whether a bill was finally passed that day
+      positions: (d.data.positions || []).map((p) => p.name).filter(Boolean),
       sources: sourcesOf(d),
     };
     if (kept.has(d.id)) return { ...kept.get(d.id), ...facts };

@@ -138,6 +138,13 @@ describe('the website', () => {
     assert.match(page.text, /href="https:\/\/example\.org\/p\.pdf#page=2"/);
     assert.match(page.text, /Weitere Beschlüsse des Tages/);
     assert.match(page.text, /Plenarprotokoll 21\/45/);
+    // what the result means: a passed bill is not in force yet
+    assert.match(page.text, /<strong>Was heißt das\?<\/strong> Der Bundestag hat das Gesetz beschlossen\. In Kraft ist es damit noch nicht/);
+    assert.match(page.text, /<span>Als Nächstes: Bundesrat<\/span>/);
+    assert.match(page.text, /<li class="now" aria-current="step">Bundestag beschließt/);
+    assert.match(page.text, /Stand nach der Sitzung vom 24\. September 2026\./);
+    assert.match(page.text, /href="\/bundestag-erklaert#gesetz">Wie ein Gesetz entsteht →/);
+    assert.match(page.text, /Ein Antrag ist kein Gesetz/);
 
     const passageId = Number(page.text.match(/href="\/stelle\/(\d+)">Wahlprogramm SPD/)[1]);
     const passage = await b.get(`/stelle/${passageId}`);
@@ -151,6 +158,28 @@ describe('the website', () => {
 
     const archive = await b.get('/archiv');
     assert.match(archive.text, /Donnerstag, 24\. September 2026/);
+  });
+
+  test('the explainer says how the Bundestag decides, and the site links to it', async () => {
+    const b = browser(app.base);
+    const res = await b.get('/bundestag-erklaert');
+    assert.equal(res.status, 200);
+    assert.match(res.text, /<h1>So arbeitet der Bundestag<\/h1>/);
+    assert.match(res.text, /<a href="\/bundestag-erklaert" aria-current="page">Grundlagen<\/a>/);
+    assert.match(res.text, /<link rel="canonical" href="http:\/\/localhost:3999\/bundestag-erklaert">/);
+    for (const id of ['beschlossen', 'gesetz', 'vorlagen', 'abstimmung', 'wer', 'lexikon']) {
+      assert.match(res.text, new RegExp(`<section id="${id}"`));
+      assert.match(res.text, new RegExp(`href="#${id}"`));
+    }
+    assert.match(res.text, /Vorabstimmung/);
+    assert.match(res.text, /id="lexikon-beschlussempfehlung"/);
+    assert.match(res.text, /Die Koalition bilden SPD und CDU\/CSU mit zusammen 328 von 630 Sitzen/);
+    assert.match(res.text, /mindestens 316 von 630 Stimmen/);
+    assert.match(res.text, /also 420 Stimmen/);
+
+    assert.match((await b.get('/')).text, /href="\/bundestag-erklaert"/);
+    assert.match((await b.get('/vorschau')).text, /href="\/bundestag-erklaert"/);
+    assert.match((await b.get('/sitemap.xml')).text, /<loc>http:\/\/localhost:3999\/bundestag-erklaert<\/loc>/);
   });
 
   test('the Mitmachen page lists every theme with working anchors', async () => {

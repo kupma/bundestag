@@ -114,7 +114,7 @@ img, svg { max-width: 100%; }
 .header-inner { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px 24px; }
 .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; font-family: var(--display); font-variation-settings: 'SOFT' 100; font-weight: 600; font-size: 1.2rem; letter-spacing: -0.01em; }
 .site-nav { display: flex; gap: 2px; min-width: 0; }
-.site-nav a { text-decoration: none; color: var(--ink-2); font-weight: 500; font-size: 0.97rem; padding: 7px 13px; border-radius: 999px; white-space: nowrap; }
+.site-nav a { text-decoration: none; color: var(--ink-2); font-weight: 500; font-size: 0.97rem; padding: 7px 11px; border-radius: 999px; white-space: nowrap; }
 .site-nav a:hover { background: var(--stone-1); color: var(--ink); }
 .site-nav a[aria-current='page'] { background: var(--stone-2); color: var(--ink); }
 .account-nav { display: flex; align-items: center; gap: 10px; font-size: 0.95rem; }
@@ -273,6 +273,30 @@ form.inline { display: inline; }
 .votes { display: flex; gap: 12px; color: var(--ink-2); background: var(--stone-1); border-radius: var(--r-md); padding: 12px 18px; }
 .votes strong { color: var(--ink); white-space: nowrap; }
 
+/* "Was heißt das?": what the result means, and where a passed bill goes next */
+.meaning { box-shadow: inset 0 0 0 1.5px var(--stone-2); border-radius: var(--r-md); padding: 14px 18px; margin: 0 0 1em; color: var(--ink-2); }
+.meaning p { margin: 0; }
+.meaning strong { color: var(--ink); }
+.meaning > * + * { margin-top: 8px; }
+.meaning .meta a { font-weight: 600; color: var(--ink-2); }
+/* the way of the bill: walked = filled, where it stands = solid, ahead = dashed */
+.stages { list-style: none; padding: 0; margin: 14px 0 4px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.stages li { position: relative; padding: 24px 4px 0; text-align: center; font-size: 0.8rem; line-height: 1.3; color: var(--ink-3); }
+.stages li::before { content: ''; position: absolute; top: 0; left: 50%; width: 16px; height: 16px; transform: translateX(-50%); border-radius: 50%; border: 1.5px dashed var(--stone-3); }
+.stages li + li::after { content: ''; position: absolute; top: 7px; left: calc(-50% + 12px); right: calc(50% + 12px); border-top: 1.5px dashed var(--stone-3); }
+.stages .done, .stages .now { color: var(--ink-2); }
+.stages .done::before { border: 1.5px solid var(--ink); background: color-mix(in srgb, var(--ink) 30%, transparent); }
+.stages .now { color: var(--ink); font-weight: 700; }
+.stages .now::before { border: 1.5px solid var(--ink); background: var(--ink); }
+.stages .done::after, .stages .now::after { border-top-style: solid; border-color: var(--ink-2); }
+@media (max-width: 560px) {
+  .stages { grid-template-columns: 1fr; gap: 8px; }
+  .stages li { text-align: left; padding: 0 0 0 28px; min-height: 20px; }
+  .stages li::before { left: 0; top: 1px; transform: none; }
+  .stages li + li::after { top: -9px; left: 7px; right: auto; height: 10px; border-top: none; border-left: 1.5px dashed var(--stone-3); }
+  .stages .done::after, .stages .now::after { border-left-style: solid; border-color: var(--ink-2); }
+}
+
 .compare { list-style: none; padding: 0; margin: 20px 0 0; }
 .party-row { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 4px 16px; padding: 20px 0; border-top: 1px solid var(--line); }
 .party-row:first-child { border-top: none; }
@@ -362,6 +386,47 @@ form.inline { display: inline; }
 .tip .pills { margin: 0; }
 .tip-links { margin-top: auto; padding-top: 6px; font-size: 0.92rem; font-weight: 600; }
 
+/* --- explainer (/bundestag-erklaert) ----------------------------------------------------- */
+.explainer-section { margin-top: 56px; scroll-margin-top: 20px; }
+.explainer-section > h2 { margin-top: 0; }
+.explainer-section > h3 { font-size: 1.15rem; margin-top: 1.6em; }
+.meanings { list-style: none; padding: 0; margin: 20px 0; display: grid; gap: 12px; }
+.meanings li { display: grid; grid-template-columns: 10.5rem minmax(0, 1fr); gap: 8px 20px; background: var(--surface); border-radius: var(--r-lg); box-shadow: var(--shadow); padding: 18px 22px; }
+.meaning-mark { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding-top: 2px; }
+.meanings h3 { margin: 0 0 4px; font-size: 1.12rem; }
+.meanings p { margin: 0; color: var(--ink-2); }
+.confusing { margin-top: 24px; }
+.confusing h3 { margin: 0 0 10px; font-size: 1.15rem; }
+.confusing dl { margin: 0; display: grid; gap: 14px; }
+.confusing dt { font-weight: 700; }
+.confusing dd { margin: 2px 0 0; color: var(--ink-2); }
+/* the way of a bill: decided in the Bundestag = filled, the decisive vote = solid, after it = open */
+.path { list-style: none; padding: 0; margin: 24px 0; }
+.path-step, .path-break { position: relative; padding: 0 0 22px 40px; }
+.path-step::before { content: ''; position: absolute; left: 3px; top: 5px; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--ink); background: color-mix(in srgb, var(--ink) 30%, transparent); }
+.path-step.decisive::before { background: var(--ink); }
+.path-step.after::before { background: transparent; }
+.path-step::after { content: ''; position: absolute; left: 12.25px; top: 30px; bottom: 4px; border-left: 1.5px solid var(--stone-3); }
+.path-step:last-child::after { display: none; }
+.path-step h3 { margin: 0 0 4px; font-size: 1.15rem; }
+.path-step p { margin: 0 0 6px; color: var(--ink-2); }
+.path-step .pills { margin: 2px 0 8px; }
+.path-break { padding-bottom: 18px; font-size: 0.88rem; font-weight: 600; color: var(--ink-3); }
+.path-break::after { content: ''; position: absolute; left: 12.25px; top: -4px; bottom: 4px; border-left: 1.5px dashed var(--stone-3); }
+.kinds { margin: 20px 0 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+.kinds > div { background: var(--surface); border-radius: var(--r-lg); box-shadow: var(--shadow); padding: 18px 22px; }
+.kinds dt { font-family: var(--display); font-weight: 560; font-variation-settings: 'SOFT' 100; font-size: 1.12rem; margin-bottom: 4px; }
+.kinds dd { margin: 0; color: var(--ink-2); font-size: 0.97rem; }
+.glossary { margin: 16px 0 0; }
+.glossary > div { display: grid; grid-template-columns: 12rem minmax(0, 1fr); gap: 2px 20px; padding: 12px 0; border-bottom: 1px solid var(--line); scroll-margin-top: 20px; }
+.glossary > div:target { background: var(--stone-1); border-radius: var(--r-sm); padding: 12px; }
+.glossary dt { font-weight: 700; }
+.glossary dd { margin: 0; color: var(--ink-2); }
+@media (max-width: 560px) {
+  .meanings li, .glossary > div { grid-template-columns: 1fr; }
+  .meaning-mark { flex-direction: row; align-items: center; gap: 10px; }
+}
+
 /* --- forms ------------------------------------------------------------------------------- */
 .form-page { max-width: 480px; }
 .form-page.wide { max-width: 700px; }
@@ -415,7 +480,8 @@ th { color: var(--ink-3); font-weight: 600; }
 .admin-comments li { border-bottom: 1px solid var(--line); padding: 10px 0; }
 .admin-comments p { margin: 2px 0; }
 
-@media (max-width: 860px) {
+/* six sections and the account links fit one row only from about 1020px on */
+@media (max-width: 1020px) {
   .header-inner { grid-template-columns: minmax(0, 1fr) auto; }
   .site-nav { grid-row: 2; grid-column: 1 / -1; overflow-x: auto; scrollbar-width: none; margin: 0 -8px; padding: 2px 8px; }
   .site-nav::-webkit-scrollbar { display: none; }
