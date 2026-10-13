@@ -56,12 +56,16 @@ test('generateArticle writes a checked, structured article', async () => {
   const bill = body.decisions.find((d) => d.title.includes('Mietpreisbremse'));
   assert.equal(bill.votesNote, 'CDU/CSU und SPD dafür, AfD dagegen.');
   assert.deepEqual(bill.positions, ['2. Beratung', '3. Beratung'], 'both readings, so the bill was passed that day');
-  // Suggestions: at most three, known levels only, links only from the curated list.
+  // Suggestions: at most two, known levels only, links only from the curated
+  // list – and none of the general ones that would fit under any decision.
   assert.deepEqual(bill.actions, [
     { level: 'alltag', text: 'Prüfe mit dem Mietspiegel, ob deine Miete zulässig ist.', resource: 'mieterbund' },
-    { level: 'politik', text: 'Frag deine Abgeordneten, wie es weitergeht.', resource: 'abgeordnete' },
     { level: 'gemeinsam', text: 'Sprich mit deinen Nachbarn über ihre Erfahrungen.', resource: null },
   ]);
+  const analysis = ctx.claude.calls.find((c) => c.schema.required.includes('parties'));
+  const offered = analysis.schema.properties.actions.items.properties.resource.enum;
+  assert.ok(offered.includes('mieterbund'));
+  assert.ok(!offered.includes('abgeordnete') && !offered.includes('petition'), 'general participation links are not offered');
   assert.ok(bill.sources.some((s) => s.label === 'Plenarprotokoll 21/45'));
   assert.ok(bill.sources.some((s) => s.label.startsWith('Drucksache 21/1234')));
   assert.equal(bill.parties.length, 4, 'every programme appears once');

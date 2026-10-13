@@ -25,7 +25,7 @@ import { createHash } from 'node:crypto';
 import { fetchDetails, IN_DEPTH_MIN_IMPORTANCE } from './dip.js';
 import { findVotePassages } from './protocol.js';
 import { bySeat, KINDS, pdfPageUrl } from './programs.js';
-import { LEVEL_KEYS, LEVELS, RESOURCE_KEYS, RESOURCES } from './resources.js';
+import { ACTION_RESOURCE_KEYS, isGeneralAction, LEVEL_KEYS, LEVELS, MAX_ACTIONS, RESOURCES } from './resources.js';
 import { loadVectors, retrievePassages } from './retrieval.js';
 import { formatDateDe, mapLimit, quoteIsIn, truncate } from './text.js';
 
@@ -72,14 +72,15 @@ Außerdem:
 - "result": das Ergebnis für die Vorlage selbst (den Gesetzentwurf, den Antrag). Folgt der Bundestag einer Beschlussempfehlung, die Vorlage abzulehnen, ist das Ergebnis "abgelehnt" – auch wenn das Protokoll von der Annahme der Beschlussempfehlung spricht.
 - "votes_note": 1–2 Sätze zum Abstimmungsverhalten laut Protokoll; leer, wenn der Protokollauszug dazu nichts hergibt.
 
-Schließlich "actions": 0–3 kleine, konkrete Schritte, mit denen Leserinnen und Leser zum Thema dieses Beschlusses etwas Gutes beitragen können – unabhängig davon, wie sie zum Beschluss stehen.
-- "level": "alltag" (für sich selbst, z. B. beim Einkaufen oder im Haushalt), "gemeinsam" (mit anderen, in Nachbarschaft, Verein, Ehrenamt) oder "politik" (sich informieren und beteiligen: Abgeordnete fragen, Petition, Kommunalpolitik).
+Schließlich "actions": höchstens zwei Schritte, die Leserinnen und Leser bei genau diesem Beschluss wirklich weiterbringen – unabhängig davon, wie sie zum Beschluss stehen. Weniger ist besser; eine leere Liste ist oft die richtige Antwort.
+- Ein Schritt gehört nur hierher, wenn er ohne diesen Beschluss nicht dastünde: Er hilft, etwas zu nutzen, zu prüfen oder vorzubereiten, das sich durch den Beschluss für die Leserin oder den Leser ändert (ein Anspruch, eine Pflicht, eine Leistung, ein Recht), oder er hilft konkret bei dem Problem, um das es im Beschluss geht. Könnte derselbe Satz auch unter einem anderen Beschluss stehen, lass ihn weg.
+- Keine allgemeinen Tipps zur Beteiligung: nicht „frag deine Abgeordneten“, „reich eine Petition ein“, „informiere dich“, „sprich mit anderen darüber“ oder „engagiere dich im Verein“. Dafür hat die Seite einen eigenen Bereich.
+- "level": "alltag" (für sich selbst – der häufigste Fall), "gemeinsam" (nur eine konkrete Hilfe für andere, die direkt zum Thema gehört, etwa für Mieterinnen und Mieter bei einem Beschluss zum Mietrecht) oder "politik" (nur, wenn der Beschluss selbst eine Möglichkeit eröffnet, sich zu beteiligen, und sie in den Quellen steht).
 - "text": 1–2 freundliche Sätze in der Du-Form. Konkret und machbar, ohne erhobenen Zeigefinger.
-- Keine Wahlempfehlung, keine Aufforderung, für oder gegen eine Partei oder den Beschluss zu sein, kein Protestaufruf. Beteiligung heißt: informieren, fragen, mitreden, helfen.
+- Keine Wahlempfehlung, keine Aufforderung, für oder gegen eine Partei oder den Beschluss zu sein, kein Protestaufruf.
 - Nur allgemein gültige, überprüfbare Hinweise. Keine Zahlen, Beträge, Fristen, Namen von Firmen oder Organisationen, die nicht in den Quellen stehen – verweise stattdessen über "resource" auf ein Angebot aus der Liste.
 - "resource": der Schlüssel eines passenden Angebots aus dieser Liste, sonst "keine":
-${RESOURCE_KEYS.map((k) => `  ${k}: ${RESOURCES[k].label}`).join('\n')}
-- Gibt es zum Thema keinen sinnvollen Schritt, bleibt die Liste leer.`;
+${ACTION_RESOURCE_KEYS.map((k) => `  ${k}: ${RESOURCES[k].label}`).join('\n')}`;
 
 const ANALYSIS_SCHEMA = {
   type: 'object',
@@ -99,7 +100,7 @@ const ANALYSIS_SCHEMA = {
         properties: {
           level: { type: 'string', enum: LEVEL_KEYS },
           text: { type: 'string' },
-          resource: { type: 'string', enum: [...RESOURCE_KEYS, 'keine'] },
+          resource: { type: 'string', enum: [...ACTION_RESOURCE_KEYS, 'keine'] },
         },
       },
     },
@@ -325,16 +326,17 @@ export function checkAnalysis(analysis, programs, passages) {
   return { parties, droppedQuotes, withdrawn };
 }
 
-// Suggestions are kept to three, to a known level, and to links from the
-// curated list – the schema already enforces the keys, this is the belt to
-// those braces for anything that reaches the page.
+// Suggestions are kept to two, to a known level, and to links from the
+// curated list, minus the general ones that fit any decision – the schema
+// already enforces the keys, this is the belt to those braces for anything
+// that reaches the page.
 export function checkActions(actions) {
   const out = [];
   for (const a of actions || []) {
     const text = String((a && a.text) || '').replace(/\s+/g, ' ').trim();
-    if (!text || text.length > 500 || !LEVELS[a.level]) continue;
+    if (!text || text.length > 500 || !LEVELS[a.level] || isGeneralAction(a)) continue;
     out.push({ level: a.level, text, resource: RESOURCES[a.resource] ? a.resource : null });
-    if (out.length === 3) break;
+    if (out.length === MAX_ACTIONS) break;
   }
   return out;
 }

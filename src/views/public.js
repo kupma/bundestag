@@ -1,7 +1,7 @@
 import { escapeHtml, html, paragraphs, raw } from '../html.js';
 import { THEMES } from '../mitmachen.js';
 import { bySeat, KINDS, partyClass } from '../programs.js';
-import { isExternal, LEVELS, RESOURCES } from '../resources.js';
+import { isExternal, LEVELS, RESOURCES, shownActions } from '../resources.js';
 import { formatDateDe, formatDateTimeDe, truncate } from '../text.js';
 import { agendaTeaser } from './agenda.js';
 import { decisionContext, decisionTags, EXPLAINER_PATH } from './explainer.js';
@@ -162,7 +162,7 @@ export function homePage(view, { latest, articles, programCount, preparing = [],
         <div class="step-card">
           <p class="step-no">5</p>
           <h2>Jetzt hast du das Wort.</h2>
-          <p>Du stehst am Rednerpult. Zu jedem Beschluss zeigen wir kleine Schritte, mit denen du selbst etwas bewegen kannst – im Alltag, mit anderen und in der Politik. Ganz gleich, wen du wählst.</p>
+          <p>Du stehst am Rednerpult. Wo ein Beschluss deinen Alltag berührt, zeigen wir, was du konkret daraus machen kannst. Und unter <a href="/mitmachen">Mitmachen</a> steht, wie du dich einbringst – ganz gleich, wen du wählst.</p>
           <p class="hero-actions">
             <a class="button" href="${latestLink}">${latest ? 'Neuesten Sitzungstag lesen' : 'Zu den Sitzungstagen'}</a>
             ${view.user ? html`<a class="button ghost" href="/mitmachen">Mitmachen</a>` : html`<a class="button ghost" href="/registrieren">Newsletter abonnieren</a>`}
@@ -299,8 +299,9 @@ function partyRow(p) {
   </li>`;
 }
 
-function todo(actions) {
-  if (!actions || !actions.length) return '';
+function todo(stored) {
+  const actions = shownActions(stored);
+  if (!actions.length) return '';
   return html`<section class="panel todo">
     <h3>Was du tun kannst</h3>
     <ul>${actions.map(
@@ -516,7 +517,7 @@ export function aboutPage(view, { programs }) {
     <li><strong>Einordnung:</strong> Eine KI (Claude von Anthropic) vergleicht jeden Beschluss mit den passendsten Passagen jedes Programms. Sie darf nur die gelieferten Dokumente verwenden und muss wörtlich zitieren.</li>
     <li><strong>Prüfung:</strong> Bevor ein Artikel erscheint, prüft ein Programm jedes Zitat Zeichen für Zeichen gegen den Programmtext. Nicht auffindbare Zitate werden gestrichen; eine Einordnung ohne belegbare Fundstelle wird zurückgezogen.</li>
     <li><strong>Vorschau:</strong> Die <a href="/vorschau">Vorschau</a> liest die offizielle Tagesordnung des Bundestags. Ob an einem Punkt abgestimmt wird, steht in ihrer Sprache: Zweite und dritte Beratung eines Gesetzentwurfs und die Beratung einer Beschlussempfehlung enden mit einer Abstimmung, eine erste Beratung mit der Überweisung in die Ausschüsse. Anträge ohne Ausschussbericht werden meist überwiesen und stehen deshalb unter „Abstimmung möglich“.</li>
-    <li><strong>Was du tun kannst:</strong> Zu jedem Beschluss schlagen wir kleine Schritte vor – für dich, mit anderen oder in der Politik. Sie sollen unabhängig davon hilfreich sein, wie du zu dem Beschluss stehst. Links führen nur zu einer festen, von uns geprüften Liste von Angeboten.</li>
+    <li><strong>Was du tun kannst:</strong> Wo es zu einem Beschluss etwas Konkretes zu tun gibt, schlagen wir bis zu zwei Schritte vor – meist für dich selbst, seltener mit anderen oder in der Politik. Sie sollen unabhängig davon hilfreich sein, wie du zu dem Beschluss stehst. Allgemeine Tipps wie „frag deine Abgeordneten“ wiederholen wir nicht unter jedem Beschluss; sie stehen unter <a href="/mitmachen">Mitmachen</a>. Links führen nur zu einer festen, von uns geprüften Liste von Angeboten.</li>
   </ol>
   <p>Seitenangaben beziehen sich auf die Seite im PDF, nicht auf die gedruckte Seitenzahl.</p>
   <h2>Grenzen</h2>

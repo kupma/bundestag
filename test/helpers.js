@@ -197,8 +197,9 @@ export function fakeClaude() {
           }
           return { program_id: p.id, vote: 'enthalten', alignment: 'entspricht', assessment: 'Behauptung ohne Beleg.', citations: [{ passage_id: 999999, quote: 'erfunden' }] };
         });
-        // Four suggestions, one with an unknown level and one with an unknown
-        // link: the checks keep three, drop the level, and unlink the link.
+        // Five suggestions, one general (ask your MP), one with an unknown
+        // level and one with an unknown link: the checks drop the general one
+        // and the level, unlink the link, and keep two.
         const actions = [
           { level: 'alltag', text: 'Prüfe mit dem Mietspiegel, ob deine Miete zulässig ist.', resource: 'mieterbund' },
           { level: 'politik', text: 'Frag deine Abgeordneten, wie es weitergeht.', resource: 'abgeordnete' },
