@@ -6,7 +6,9 @@ After every sitting day of the German Bundestag, this site publishes an article 
 
 The **/vorschau** page looks ahead: the agenda of the coming sitting days, with the items that end in a vote first (see *The preview* below).
 
-The site is also meant to leave people calmer and more capable, not more agitated. Every article ends each decision with **"Was du tun kannst"**, a few small steps at three levels: for yourself, with others, and in politics. It also says where the parliamentary groups agreed (**"Gemeinsamkeiten"**). The **/mitmachen** page collects practical, non-partisan ways to contribute: staying calmly informed, shopping with impact, everyday democracy, and community.
+The **/bundestag-erklaert** page (*Grundlagen* in the menu) explains, for readers without any background, how the Bundestag decides: what the results on this site mean, the way of a bill from first reading to coming into force, motions and other decisions that are not laws, how votes and majorities work, who else takes part, and a short glossary. In every article, each decision carries a short **"Was heißt das?"** that says what its result means: a bill the Bundestag passed still has to go through the Bundesrat and the Federal President (with a small diagram of that way), an adopted motion is no law, a rejected one is the usual case. That text is written by hand in `src/views/explainer.js` from the decision's Vorgangstyp, result and readings, not generated, so it also works for articles written before it existed.
+
+The site is also meant to leave people calmer and more capable, not more agitated. Where a decision gives readers something concrete to do, it ends with **"Was du tun kannst"**: at most two steps that only make sense for this decision, mostly for yourself, rarely with others or in politics. General tips that would fit under any decision (ask your MP, sign a petition, talk about it) are not repeated there; they live on /mitmachen. It also says where the parliamentary groups agreed (**"Gemeinsamkeiten"**). The **/mitmachen** page collects practical, non-partisan ways to contribute: staying calmly informed, shopping with impact, everyday democracy, and community.
 
 The site itself is in German. Code and docs are in English.
 
@@ -47,7 +49,7 @@ Programme PDFs ──► page-exact passages ──► German full-text index (+
 - **Shapes instead of colours.** Two circles stand for "versprochen" (left) and "beschlossen" (right). Their overlap is the verdict: nearly one circle = *entspricht*, half overlapping = *teilweise*, apart = *widerspricht*, a dashed empty circle = *nicht thematisiert*. The same two circles are the logo. A verdict never depends on colour alone, which also works in greyscale, for colour-blind readers, and in dark mode.
 - **Calm by default.** Soft rounded shapes, generous whitespace, sentence case, no alarm colours. Results use shape too: adopted = filled pill, rejected = outlined, settled = dashed.
 - **Type.** [Fraunces](https://github.com/undercasetype/Fraunces) (soft axis) for headings and [Figtree](https://github.com/erikdkennedy/figtree) for text. Both are served from `static/fonts` under the SIL Open Font License, so nothing loads from Google.
-- **Only curated links.** "Was du tun kannst" may link only to entries in `src/resources.js`; the JSON schema Claude answers with enforces that. The /mitmachen content lives in `src/mitmachen.js`.
+- **Only curated links.** "Was du tun kannst" may link only to entries in `src/resources.js`, and not to the general ones marked there (MPs, petitions, reading up); the JSON schema Claude answers with enforces that, and older articles have suggestions with such links hidden. The /mitmachen content lives in `src/mitmachen.js`.
 
 ## Deploy on Railway
 
@@ -129,6 +131,7 @@ src/resources.js     the only links suggestions may point to
 src/views/           server-rendered pages (everything escaped by default)
 src/views/shapes.js  the two-circle shape language
 src/views/agenda.js  the preview page (/vorschau) and its card on the home page
+src/views/explainer.js  the explainer (/bundestag-erklaert) and the "Was heißt das?" of each decision
 src/analytics.js     cookieless visitor statistics
 src/seo.js           robots.txt, sitemaps, manifest, IndexNow
 static/landing.js    the plenary hall animation on the landing page

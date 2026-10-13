@@ -4,7 +4,7 @@
 // confirmed from the inbox first).
 
 import { escapeHtml } from './html.js';
-import { isExternal, LEVELS, RESOURCES } from './resources.js';
+import { isExternal, LEVELS, RESOURCES, shownActions } from './resources.js';
 import { formatDateDe } from './text.js';
 
 const RESULT = { angenommen: 'angenommen', abgelehnt: 'abgelehnt', erledigt: 'für erledigt erklärt', sonstiges: 'beschlossen' };
@@ -15,8 +15,8 @@ const C = { paper: '#f6f3ee', surface: '#fffdfa', stone: '#efebe4', ink: '#2b292
 // Up to three suggestions for the whole day, one per decision first, so the
 // letter stays short.
 function pickActions(decisions) {
-  const firsts = decisions.map((d) => (d.actions || [])[0]).filter(Boolean);
-  const rest = decisions.flatMap((d) => (d.actions || []).slice(1));
+  const firsts = decisions.map((d) => shownActions(d.actions)[0]).filter(Boolean);
+  const rest = decisions.flatMap((d) => shownActions(d.actions).slice(1));
   return [...firsts, ...rest].slice(0, 3);
 }
 

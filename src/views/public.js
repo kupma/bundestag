@@ -1,10 +1,11 @@
 import { escapeHtml, html, paragraphs, raw } from '../html.js';
 import { THEMES } from '../mitmachen.js';
 import { bySeat, KINDS, partyClass } from '../programs.js';
-import { isExternal, LEVELS, RESOURCES } from '../resources.js';
+import { isExternal, LEVELS, RESOURCES, shownActions } from '../resources.js';
 import { formatDateDe, formatDateTimeDe, truncate } from '../text.js';
 import { agendaTeaser } from './agenda.js';
-import { ALIGNMENT_LABEL, ALIGNMENT_SHORT, cls, RESULT_LABEL, shortParty, VOTE_LABEL } from './labels.js';
+import { decisionContext, decisionTags, EXPLAINER_PATH } from './explainer.js';
+import { ALIGNMENT_LABEL, ALIGNMENT_SHORT, cls, PLENUM, RESULT_LABEL, shortParty, VOTE_LABEL } from './labels.js';
 import { DEFAULT_DESCRIPTION, layout, notices, organization, TAGLINE } from './layout.js';
 import { themeIcon, venn } from './shapes.js';
 
@@ -83,17 +84,9 @@ const FAQ = [
   ['Wer entscheidet, ob ein Beschluss zum Programm passt?', () => 'Eine KI (Claude von Anthropic) ordnet ein – aber nur auf Grundlage der gelieferten Dokumente, und jedes Zitat wird vor der Veröffentlichung automatisch Zeichen für Zeichen mit dem Programmtext abgeglichen. Einordnungen ohne überprüfbare Fundstelle werden zurückgezogen. Jede Fundstelle ist verlinkt, damit du selbst nachlesen kannst.'],
   ['Ist die Seite parteiisch?', () => 'Nein. Wir empfehlen keine Partei, alle Programme werden gleich behandelt, und die Parteien stehen in der Sitzordnung des Bundestags. Die Gestaltung verzichtet bewusst auf Farben, die eine Partei für sich beansprucht.'],
   ['Wann erscheint ein neuer Artikel?', () => 'Am Morgen nach jedem Sitzungstag. Trägt der Bundestag später weitere Beschlüsse oder das Plenarprotokoll nach, wird der Artikel aktualisiert.'],
+  ['Gilt ein Gesetz, sobald der Bundestag es beschlossen hat?', () => 'Noch nicht. Nach dem Beschluss im Bundestag ist der Bundesrat dran, dann unterschreibt der Bundespräsident, und das Gesetz wird im Bundesgesetzblatt verkündet. Erst dann tritt es in Kraft – an dem Tag, den es selbst nennt. Und ein angenommener Antrag ist gar kein Gesetz, sondern eine Forderung oder Stellungnahme des Bundestags. Mehr dazu auf der Seite „So arbeitet der Bundestag“.'],
   ['Kann ich sehen, worüber als Nächstes abgestimmt wird?', () => 'Ja, in der Vorschau. Dort steht die Tagesordnung der kommenden Sitzungstage, und die Punkte, an deren Ende abgestimmt wird, stehen vorn – Gesetze, Beschlussempfehlungen und Wahlen. Grundlage ist die offizielle Tagesordnung des Bundestags.'],
   ['Was kostet das?', () => 'Nichts. Lesen, Kommentieren und der Newsletter sind kostenlos.'],
-];
-
-// The 21st Bundestag, left to right as seen from the President.
-export const PLENUM = [
-  { party: 'Die Linke', short: 'Linke', seats: 64 },
-  { party: 'Bündnis 90/Die Grünen', short: 'Grüne', seats: 85 },
-  { party: 'SPD', short: 'SPD', seats: 120 },
-  { party: 'CDU/CSU', short: 'CDU/CSU', seats: 208 },
-  { party: 'AfD', short: 'AfD', seats: 152 },
 ];
 
 function plenumFallback() {
@@ -153,6 +146,7 @@ export function homePage(view, { latest, articles, programCount, preparing = [],
           <p class="step-no">3</p>
           <h2>Im Plenum: beschlossen</h2>
           <p>An jedem Sitzungstag stimmt der Bundestag ab – über Gesetze, Anträge und Beschlussempfehlungen. Wir lesen die offizielle Parlamentsdokumentation und das Plenarprotokoll: was beschlossen wurde und wie jede Fraktion gestimmt hat.</p>
+          <p>Was eine Lesung ist und wann ein Gesetz wirklich gilt: <a href="${EXPLAINER_PATH}">So arbeitet der Bundestag</a>.</p>
         </div>
       </section>
       <section class="step" data-step="4">
@@ -168,7 +162,7 @@ export function homePage(view, { latest, articles, programCount, preparing = [],
         <div class="step-card">
           <p class="step-no">5</p>
           <h2>Jetzt hast du das Wort.</h2>
-          <p>Du stehst am Rednerpult. Zu jedem Beschluss zeigen wir kleine Schritte, mit denen du selbst etwas bewegen kannst – im Alltag, mit anderen und in der Politik. Ganz gleich, wen du wählst.</p>
+          <p>Du stehst am Rednerpult. Wo ein Beschluss deinen Alltag berührt, zeigen wir, was du konkret daraus machen kannst. Und unter <a href="/mitmachen">Mitmachen</a> steht, wie du dich einbringst – ganz gleich, wen du wählst.</p>
           <p class="hero-actions">
             <a class="button" href="${latestLink}">${latest ? 'Neuesten Sitzungstag lesen' : 'Zu den Sitzungstagen'}</a>
             ${view.user ? html`<a class="button ghost" href="/mitmachen">Mitmachen</a>` : html`<a class="button ghost" href="/registrieren">Newsletter abonnieren</a>`}
@@ -195,6 +189,7 @@ export function homePage(view, { latest, articles, programCount, preparing = [],
   <section class="faq" aria-labelledby="faq-title">
     <h2 class="section-title" id="faq-title">Häufige Fragen</h2>
     ${FAQ.map(([q, a]) => html`<details><summary>${q}</summary><p>${a(config.siteName)}</p></details>`)}
+    <p class="meta"><a href="${EXPLAINER_PATH}">Wie der Bundestag entscheidet, einfach erklärt →</a></p>
   </section>
   </div>`;
   return layout(view, {
@@ -304,8 +299,9 @@ function partyRow(p) {
   </li>`;
 }
 
-function todo(actions) {
-  if (!actions || !actions.length) return '';
+function todo(stored) {
+  const actions = shownActions(stored);
+  if (!actions.length) return '';
   return html`<section class="panel todo">
     <h3>Was du tun kannst</h3>
     <ul>${actions.map(
@@ -317,14 +313,14 @@ function todo(actions) {
 // Each decision is a fold: closed, it is one line with the result and a
 // verdict per party; open, the whole comparison. Native <details>, so it
 // works without JavaScript; static/article.js opens the one a link points to.
-function decisionSection(d, i) {
+function decisionSection(d, i, date) {
   return html`<details class="decision" id="beschluss-${i + 1}">
     <summary>
       <h2>${d.headline}</h2>
       <span class="fold-icon" aria-hidden="true"></span>
       <span class="decision-meta">
         <span class="result result-${cls(d.result)}">${RESULT_LABEL[d.result] || d.result}</span>
-        ${d.vorgangstyp ? html`<span>${d.vorgangstyp}</span>` : ''}
+        ${decisionTags(d).map((t) => html`<span>${t}</span>`)}
       </span>
       <span class="decision-verdicts">${d.parties.map(
         (p) => html`<span class="${partyClass(p.party)}">${venn(p.alignment, { label: `${p.party}: ${ALIGNMENT_LABEL[p.alignment] || p.alignment}` })}<span class="decision-party">${shortParty(p.party, p.kind)}</span></span>`,
@@ -333,6 +329,7 @@ function decisionSection(d, i) {
     <div class="decision-body">
       <p class="official-title">${d.title}</p>
       <p>${d.summary}</p>
+      ${decisionContext(d, date)}
       ${d.votesNote ? html`<p class="votes"><strong>Abstimmung</strong><span>${d.votesNote}</span></p>` : ''}
       <h3>Was in den Programmen steht</h3>
       <ul class="compare">${d.parties.map(partyRow)}</ul>
@@ -404,14 +401,14 @@ export function articlePage(view, data) {
       ${decisions.length
         ? html`<div class="decisions-head"><h2 class="section-title">Die Beschlüsse im Einzelnen</h2><button type="button" class="link fold-all" hidden>Alle aufklappen</button></div>`
         : ''}
-      ${decisions.map(decisionSection)}
+      ${decisions.map((d, i) => decisionSection(d, i, article.sitting_date))}
       ${(b.others || []).length
         ? html`<section class="others"><h2>Weitere Beschlüsse des Tages</h2><ul>${b.others.map(
             (o) => html`<li>${o.title} <span class="meta">– ${o.tenor || RESULT_LABEL[o.outcome] || o.outcome}</span></li>`,
           )}</ul></section>`
         : ''}
       <aside class="panel disclaimer">
-        <p><strong>So entsteht dieser Artikel.</strong> Die Beschlüsse stammen aus der Parlamentsdokumentation (DIP) des Bundestags, das Abstimmungsverhalten aus dem Plenarprotokoll. Die Einordnung schreibt eine KI (Claude von Anthropic) nur auf Grundlage dieser Dokumente und der verlinkten Programmstellen. Jedes Zitat wird vor der Veröffentlichung automatisch mit dem Programmtext abgeglichen; Einordnungen ohne überprüfbare Fundstelle werden zurückgezogen. Fehler sind trotzdem möglich – deshalb ist jede Fundstelle verlinkt. <a href="/ueber#methode">Mehr zur Methode</a></p>
+        <p><strong>So entsteht dieser Artikel.</strong> Die Beschlüsse stammen aus der Parlamentsdokumentation (DIP) des Bundestags, das Abstimmungsverhalten aus dem Plenarprotokoll. Die Einordnung schreibt eine KI (Claude von Anthropic) nur auf Grundlage dieser Dokumente und der verlinkten Programmstellen. Jedes Zitat wird vor der Veröffentlichung automatisch mit dem Programmtext abgeglichen; Einordnungen ohne überprüfbare Fundstelle werden zurückgezogen. Fehler sind trotzdem möglich – deshalb ist jede Fundstelle verlinkt. <a href="/ueber#methode">Mehr zur Methode</a> · <a href="${EXPLAINER_PATH}">So arbeitet der Bundestag</a></p>
       </aside>
     </div>
   </article>
@@ -520,7 +517,7 @@ export function aboutPage(view, { programs }) {
     <li><strong>Einordnung:</strong> Eine KI (Claude von Anthropic) vergleicht jeden Beschluss mit den passendsten Passagen jedes Programms. Sie darf nur die gelieferten Dokumente verwenden und muss wörtlich zitieren.</li>
     <li><strong>Prüfung:</strong> Bevor ein Artikel erscheint, prüft ein Programm jedes Zitat Zeichen für Zeichen gegen den Programmtext. Nicht auffindbare Zitate werden gestrichen; eine Einordnung ohne belegbare Fundstelle wird zurückgezogen.</li>
     <li><strong>Vorschau:</strong> Die <a href="/vorschau">Vorschau</a> liest die offizielle Tagesordnung des Bundestags. Ob an einem Punkt abgestimmt wird, steht in ihrer Sprache: Zweite und dritte Beratung eines Gesetzentwurfs und die Beratung einer Beschlussempfehlung enden mit einer Abstimmung, eine erste Beratung mit der Überweisung in die Ausschüsse. Anträge ohne Ausschussbericht werden meist überwiesen und stehen deshalb unter „Abstimmung möglich“.</li>
-    <li><strong>Was du tun kannst:</strong> Zu jedem Beschluss schlagen wir kleine Schritte vor – für dich, mit anderen oder in der Politik. Sie sollen unabhängig davon hilfreich sein, wie du zu dem Beschluss stehst. Links führen nur zu einer festen, von uns geprüften Liste von Angeboten.</li>
+    <li><strong>Was du tun kannst:</strong> Wo es zu einem Beschluss etwas Konkretes zu tun gibt, schlagen wir bis zu zwei Schritte vor – meist für dich selbst, seltener mit anderen oder in der Politik. Sie sollen unabhängig davon hilfreich sein, wie du zu dem Beschluss stehst. Allgemeine Tipps wie „frag deine Abgeordneten“ wiederholen wir nicht unter jedem Beschluss; sie stehen unter <a href="/mitmachen">Mitmachen</a>. Links führen nur zu einer festen, von uns geprüften Liste von Angeboten.</li>
   </ol>
   <p>Seitenangaben beziehen sich auf die Seite im PDF, nicht auf die gedruckte Seitenzahl.</p>
   <h2>Grenzen</h2>

@@ -27,6 +27,22 @@ export const RESOURCES = {
 
 export const RESOURCE_KEYS = Object.keys(RESOURCES);
 
+// Ways to take part or read up that fit under any decision alike – "ask your
+// MP", "sign a petition". They belong on /mitmachen, not under a decision:
+// repeated there, they say nothing about it. Suggestions may not link them,
+// and older articles that do have those suggestions hidden.
+const GENERAL = new Set(['abgeordnete', 'abgeordnetenwatch', 'petition', 'bundestag_besuch', 'dip', 'gesetze', 'bpb', 'mitmachen_gelassen', 'mitmachen_demokratie']);
+
+export const ACTION_RESOURCE_KEYS = RESOURCE_KEYS.filter((k) => !GENERAL.has(k));
+
+export const isGeneralAction = (action) => GENERAL.has(action && action.resource);
+
+// At most this many suggestions per decision. Articles written before the
+// limit and before the general links were left out show what still holds.
+export const MAX_ACTIONS = 2;
+
+export const shownActions = (actions) => (actions || []).filter((a) => !isGeneralAction(a)).slice(0, MAX_ACTIONS);
+
 export const LEVELS = {
   alltag: 'Für dich',
   gemeinsam: 'Mit anderen',

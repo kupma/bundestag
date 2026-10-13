@@ -5,6 +5,7 @@
 import { KIND_ORDER } from '../agenda.js';
 import { html } from '../html.js';
 import { addDays, formatDateDe, formatDateTimeDe, truncate } from '../text.js';
+import { EXPLAINER_PATH } from './explainer.js';
 import { AGENDA_KIND_LABEL, AGENDA_PART_LABEL } from './labels.js';
 import { layout } from './layout.js';
 import { pendingMark } from './shapes.js';
@@ -121,6 +122,7 @@ export function previewPage(view, { days, today, fetchedAt }) {
     <p class="eyebrow">Vorschau</p>
     <h1>Darüber stimmt der Bundestag ab</h1>
     <p class="lede">Die Tagesordnung der kommenden Sitzungstage – vorn die Punkte, an deren Ende abgestimmt wird. Nach der Sitzung legen wir jeden Beschluss neben die Wahlprogramme.</p>
+    <p class="meta">Was „erste Lesung“, „Beschlussempfehlung“ oder „Überweisung“ heißt und wann ein Gesetz wirklich gilt, steht unter <a href="${EXPLAINER_PATH}">So arbeitet der Bundestag</a>.</p>
     ${days.length > 1
       ? html`<nav class="theme-nav" aria-label="Sitzungstage">${days.map((d) => {
           const n = splitDay(d.items).votes.length;
@@ -136,7 +138,7 @@ export function previewPage(view, { days, today, fetchedAt }) {
           <p>Die Tagesordnung der nächsten Sitzungswoche erscheint hier, sobald der Bundestag sie veröffentlicht – meist in der Woche davor. Wann das Parlament tagt, steht im <a href="https://www.bundestag.de/parlament/plenum/sitzungskalender" target="_blank" rel="noopener">Sitzungskalender des Bundestags ↗</a>.</p>
         </section>`}
     <aside class="panel disclaimer" id="so-lesen">
-      <p><strong>Woran wir Abstimmungen erkennen.</strong> An der Sprache der Tagesordnung: Die zweite und dritte Beratung eines Gesetzentwurfs und die Beratung einer Beschlussempfehlung enden mit einer Abstimmung, ebenso Wahlen und die „abschließenden Beratungen ohne Aussprache“. Eine erste Beratung endet mit der Überweisung in die Ausschüsse. Die Tagesordnung kann sich bis zur Sitzung ändern, und die Zeiten sind geplant, nicht garantiert.</p>
+      <p><strong>Woran wir Abstimmungen erkennen.</strong> An der Sprache der Tagesordnung: Die zweite und dritte Beratung eines Gesetzentwurfs und die Beratung einer Beschlussempfehlung enden mit einer Abstimmung, ebenso Wahlen und die „abschließenden Beratungen ohne Aussprache“. Eine erste Beratung endet mit der Überweisung in die Ausschüsse. Die Tagesordnung kann sich bis zur Sitzung ändern, und die Zeiten sind geplant, nicht garantiert. <a href="${EXPLAINER_PATH}#gesetz">Wie ein Gesetz entsteht</a></p>
       <p class="meta">Quelle: <a href="https://www.bundestag.de/tagesordnungen" target="_blank" rel="noopener">Tagesordnung des Deutschen Bundestags ↗</a>${fetchedAt ? `, zuletzt abgerufen ${formatDateTimeDe(fetchedAt)}` : ''}.</p>
     </aside>
   </div>`;
