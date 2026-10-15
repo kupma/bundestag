@@ -1,6 +1,7 @@
 // The clock. Every quarter of an hour: import any standard programme that is
 // still missing, fetch new decisions from DIP (at most hourly) and the agenda
-// of the coming sitting days (every two hours), write the
+// of the coming sitting days (every two hours) with a short summary of each
+// new Drucksache on it, write the
 // article for one finished sitting day (or refresh one that DIP has added to
 // since), and send the newsletter for articles that have not gone out yet. Each step is idempotent,
 // so a tick that runs twice, late, or on two replicas at once does no harm;
@@ -14,6 +15,7 @@ import { syncDecisions } from './dip.js';
 import { recentFailures, runJob } from './jobs.js';
 import { mailArticle } from './newsletter.js';
 import { pingIndexNow } from './seo.js';
+import { pendingSummaries, writeSummaries } from './summaries.js';
 import { addDays, berlinDate, berlinHour } from './text.js';
 
 const TICK_LOCK = 7243002;
@@ -29,7 +31,7 @@ const state = { lastSync: 0, lastAgenda: 0 };
 export async function tick(ctx, { now = new Date(), forceSync = false } = {}) {
   const { db, config } = ctx;
   const outcome = await db.tryLock(TICK_LOCK, async () => {
-    const report = { sync: null, agenda: null, library: null, generated: [], refreshed: [], mailed: [], notes: [] };
+    const report = { sync: null, agenda: null, summaries: null, library: null, generated: [], refreshed: [], mailed: [], notes: [] };
     const today = berlinDate(now);
     const hour = berlinHour(now);
     // Until the first article exists, look back far enough to find the most
@@ -69,6 +71,19 @@ export async function tick(ctx, { now = new Date(), forceSync = false } = {}) {
         report.agenda = await runJob(db, 'tagesordnung', (log) => syncAgenda(ctx, { today, log }));
       } catch (err) {
         report.notes.push(`Tagesordnung: ${err.message}`);
+      }
+    }
+
+    // 1c. "Worum es geht" for the coming agenda: one short summary per new
+    // Drucksache, a few dozen per run at most; most ticks find none to write.
+    if (config.summaries && ctx.claude && ctx.dip) {
+      try {
+        const pending = await pendingSummaries(db, { today, now });
+        if (pending.length) {
+          report.summaries = await runJob(db, 'zusammenfassungen', (log) => writeSummaries(ctx, pending.slice(0, config.summaryMaxPerRun), { log }));
+        }
+      } catch (err) {
+        report.notes.push(`Zusammenfassungen: ${err.message}`);
       }
     }
 
