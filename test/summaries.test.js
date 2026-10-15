@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { parseRow } from '../src/agenda.js';
 import { tick } from '../src/scheduler.js';
-import { pendingSummaries, SUMMARY_MAX_CHARS, summaryPrompt, vorlagenOf, writeSummaries } from '../src/summaries.js';
+import { pendingSummaries, SUMMARY_MAX_CHARS, SUMMARY_VERSION, summaryPrompt, vorlagenOf, writeSummaries } from '../src/summaries.js';
 import { berlinDate } from '../src/text.js';
 import { browser, fakeClaude, fakeDip, fakeMailer, makeConfig, makeDb, startApp } from './helpers.js';
 
@@ -70,6 +70,24 @@ test('summaries are written once per Drucksache, on Haiku, and a missing text is
   // Nothing is due right away; the missing one is due again after half a day.
   assert.deepEqual(await pendingSummaries(db, { today }), []);
   assert.deepEqual(await pendingSummaries(db, { today, now: new Date(Date.now() + 13 * 3600 * 1000) }), [missing]);
+  assert.equal(row1.kurz, 'Kurz gesagt: 21/1234.');
+  assert.equal(row1.version, SUMMARY_VERSION);
+
+  // A summary from an older prompt is written again at once, and stays on
+  // the page while a new try fails.
+  await db.query(`update drucksache_summaries set version = 1, kurz = '' where nummer = '21/1234'`);
+  assert.deepEqual(await pendingSummaries(db, { today }), ['21/1234']);
+  const broken = { ...ctx, claude: { json: async () => { throw new Error('Anthropic nicht erreichbar.'); } } };
+  await writeSummaries(broken, ['21/1234']);
+  const kept = await db.one('select * from drucksache_summaries where nummer = $1', ['21/1234']);
+  assert.equal(kept.summary, row1.summary, 'the old summary is kept');
+  assert.equal(kept.version, 1);
+  assert.deepEqual(await pendingSummaries(db, { today }), [], 'and not retried on every tick');
+  await writeSummaries(ctx, ['21/1234']);
+  const fresh = await db.one('select * from drucksache_summaries where nummer = $1', ['21/1234']);
+  assert.equal(fresh.version, SUMMARY_VERSION);
+  assert.equal(fresh.kurz, 'Kurz gesagt: 21/1234.');
+  assert.equal(fresh.last_error, '');
   await db.close();
 });
 
@@ -93,14 +111,17 @@ test('the clock writes the summaries, and the preview shows them as AI summaries
   const app = await startApp(ctx);
   try {
     const page = (await browser(app.base).get('/vorschau')).text;
-    assert.match(page, /<p class="agenda-about-title">Worum es geht<\/p>\s*<p>Die Bundesregierung will mit der Drucksache 21\/1234 etwas ändern\.<\/p>/);
+    // closed: one sentence; open: the summary, marked as written by an AI
+    assert.match(page, /<span class="agenda-teaser">Kurz gesagt: 21\/1234\.<\/span>/);
+    assert.match(page, /<p class="agenda-about-title">Worum es geht <span class="meta">· Gesetzentwurf · Bundesregierung<\/span><\/p>\s*<p>Die Bundesregierung will mit der Drucksache 21\/1234 etwas ändern\.<\/p>/);
     assert.match(page, /KI-Zusammenfassung der Drucksache <a href="https:\/\/dserver\.bundestag\.de\/[^"]+" target="_blank" rel="noopener">21\/1234 ↗<\/a> · kann Fehler enthalten/);
-    // two parts, two summaries, each labelled with what it is
-    assert.match(page, /<span class="pill">Gesetzentwurf<\/span> Die Bundesregierung will mit der Drucksache 21\/1500/);
-    assert.match(page, /KI-Zusammenfassung der Drucksachen <a[^>]*>21\/1500 ↗<\/a>, <a[^>]*>21\/1400 ↗<\/a>/);
-    // a first reading, folded under "Außerdem", carries its summary too
-    assert.match(page, /<p class="agenda-rest-about">Die Bundesregierung will mit der Drucksache 21\/1550 etwas ändern\. <span class="meta">\(KI-Zusammenfassung/);
-    assert.doesNotMatch(page, /21\/1800 etwas/, 'no summaries for votes without debate');
+    // two parts: the bill is the main one, the motion is "debated together", in one line
+    assert.match(page, /<span class="agenda-teaser">Kurz gesagt: 21\/1500\.<\/span><span class="agenda-more meta">Gemeinsam beraten mit einer weiteren Vorlage<\/span>/);
+    assert.match(page, /<p class="agenda-about-title">Gemeinsam beraten<\/p>[\s\S]*?<span class="pill">Beschlussempfehlung<\/span> <strong>Wehrpflicht nicht wieder einführen<\/strong> <span class="meta">Antrag · Linke<\/span>\s*<span class="agenda-together-kurz">Kurz gesagt: 21\/1400\. <span class="meta">\(KI-Zusammenfassung, Drucksache <a[^>]*>21\/1400 ↗<\/a>\)<\/span><\/span>/);
+    assert.doesNotMatch(page, /Die Bundesregierung will mit der Drucksache 21\/1400/, 'the other one in one line, not in full');
+    // a first reading, folded under "Außerdem", carries its one line too
+    assert.match(page, /<p class="agenda-rest-about">Kurz gesagt: 21\/1550\. <span class="meta">\(KI-Zusammenfassung, Drucksache <a[^>]*>21\/1550 ↗<\/a>\)<\/span><\/p>/);
+    assert.doesNotMatch(page, /21\/1800\./, 'no summaries for votes without debate');
     assert.match(page, /Diese Zusammenfassungen schreibt eine KI/);
   } finally {
     await app.close();

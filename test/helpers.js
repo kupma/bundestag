@@ -178,9 +178,13 @@ export function fakeClaude() {
     async json({ prompt, schema, model, effort }) {
       calls.push({ prompt, schema, model, effort });
       const usage = { input: 100, output: 50 };
-      if (schema.required.length === 1 && schema.required[0] === 'summary') {
+      if (schema.required.includes('kurz')) {
         const nummer = (prompt.match(/<drucksache nummer="([^"]+)"/) || [])[1];
-        return { data: { summary: `Die Bundesregierung will mit der Drucksache ${nummer} etwas ändern.` }, model: model || 'fake-model', usage };
+        return {
+          data: { kurz: `Kurz gesagt: ${nummer}.`, summary: `Die Bundesregierung will mit der Drucksache ${nummer} etwas ändern.` },
+          model: model || 'fake-model',
+          usage,
+        };
       }
       if (schema.required.includes('items')) {
         const ids = [...prompt.matchAll(/<beschluss id="(\d+)">/g)].map((m) => Number(m[1]));

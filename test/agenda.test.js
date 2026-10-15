@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createAgendaClient, drucksachenIn, isoWeek, isoWeekMonday, parseGermanDate, parseRow, parseWeek, syncAgenda, upcomingAgenda } from '../src/agenda.js';
+import { createAgendaClient, drucksachenIn, gistOf, htmlLines, isoWeek, isoWeekMonday, parseGermanDate, parseRow, parseWeek, syncAgenda, upcomingAgenda } from '../src/agenda.js';
 import { tick } from '../src/scheduler.js';
 import { addDays, berlinDate } from '../src/text.js';
 import { previewPage } from '../src/views/agenda.js';
@@ -256,23 +256,50 @@ test('the clock fetches the agenda, and a failure is a note, not a crash', async
   await db.close();
 });
 
-test('the preview keeps the order of the day, writes the numbers out and folds long texts', () => {
+test('what a part is, who brought it in, and its title', () => {
+  const gist = (detail) => gistOf(htmlLines(detail));
+  assert.deepEqual(gist('Beratung der Beschlussempfehlung und des Berichts des Ausschusses für Tourismus (20. Ausschuss)<br/>zu dem Antrag der Fraktion BÜNDNIS 90/DIE GRÜNEN<br/>Natur erleben, Umwelt schützen<br/>Drucksachen 21/7901, 21/8473'), { doc: 'Antrag', by: 'Grüne', title: 'Natur erleben, Umwelt schützen' });
+  assert.deepEqual(gist('Zweite und dritte Beratung des von der Bundesregierung eingebrachten Entwurfs eines Gesetzes zur Verlängerung der Mietpreisbremse<br/>Drucksache 21/1234<br/>Beschlussempfehlung und Bericht des Rechtsausschusses<br/>Drucksache 21/1300'), { doc: 'Gesetzentwurf', by: 'Bundesregierung', title: 'Entwurf eines Gesetzes zur Verlängerung der Mietpreisbremse' });
+  assert.deepEqual(gist('Erste Beratung des von den Fraktionen der CDU/CSU und SPD eingebrachten Entwurfs eines Zweiten Gesetzes zur Änderung des Bundeswahlgesetzes<br/>Drucksache 21/1500<br/>Überweisungsvorschlag: Innenausschuss (f)'), { doc: 'Gesetzentwurf', by: 'CDU/CSU und SPD', title: 'Entwurf eines Zweiten Gesetzes zur Änderung des Bundeswahlgesetzes' });
+  assert.deepEqual(gist('Beratung der Beschlussempfehlung des Petitionsausschusses (2. Ausschuss)<br/>Sammelübersicht 330 zu Petitionen<br/>Drucksache 21/8600'), { doc: 'Petitionen', by: '', title: 'Sammelübersicht 330 zu Petitionen' });
+  assert.deepEqual(gist('Beratung der Beschlussempfehlung des Ausschusses für die Angelegenheiten der Europäischen Union (21. Ausschuss)<br/>zu der Unterrichtung durch die Bundesregierung<br/>Vorschlag für eine Verordnung des Europäischen Parlaments und des Rates über Verpackungen<br/>KOM(2025) 123 endg.; Ratsdok. 1234/25<br/>Drucksachen 21/100, 21/200'), { doc: 'EU-Vorhaben', by: '', title: 'Vorschlag für eine Verordnung des Europäischen Parlaments und des Rates über Verpackungen' });
+  assert.deepEqual(gist('Beratung der Beschlussempfehlung und des Berichts des Ausschusses für Wirtschaft und Energie (9. Ausschuss) zu dem Antrag der Abgeordneten Erika Muster, Max Muster und der Fraktion BÜNDNIS 90/DIE GRÜNEN<br/>Für ein modernes Energiesystem'), { doc: 'Antrag', by: 'Grüne', title: 'Für ein modernes Energiesystem' });
+  // nothing to go on: the page falls back to the agenda's text
+  assert.deepEqual(gist('Vereinbarte Debatte zu 35 Jahren Deutsche Einheit'), { doc: '', by: '', title: 'Vereinbarte Debatte zu 35 Jahren Deutsche Einheit' });
+});
+
+test('the preview folds each item, keeps the order of the day and writes the numbers out', () => {
   const row = (time, top, title, detail) => ({ time, top, topic: { title, detail }, status: { title: '', detail: '' } });
-  const long = 'Zweite und dritte Beratung des von der Bundesregierung eingebrachten Entwurfs eines Gesetzes zur Stärkung der Pflege' + ' und zur Änderung weiterer Vorschriften'.repeat(12);
   const items = [
     row('09:00', '8', 'Bürgergeld', 'Beratung der Beschlussempfehlung und des Berichts des Ausschusses für Arbeit und Soziales zu dem Antrag der Fraktion der AfD<br/>Bürgergeld abschaffen<br/>Drucksache 21/1350'),
-    row('15:30', '5', 'Pflege', `${long}<br/>Drucksache 21/1234`),
+    row('15:30', '5', 'Pflege', 'Zweite und dritte Beratung des von der Bundesregierung eingebrachten Entwurfs eines Gesetzes zur Stärkung der Pflege<br/>Drucksache 21/1234'),
+    row(
+      '18:35',
+      '39, ZP 7, TOP 19b',
+      'Abschließende Beratungen ohne Aussprache',
+      'a) Beratung der Beschlussempfehlung des Ausschusses für Tourismus zu dem Antrag der Fraktion BÜNDNIS 90/DIE GRÜNEN<br/>Natur erleben<br/>Drucksachen 21/7901, 21/8473<br/>b) Beratung der Beschlussempfehlung des Petitionsausschusses (2. Ausschuss)<br/>Sammelübersicht 330 zu Petitionen<br/>Drucksache 21/8600<br/>c) Beratung der Beschlussempfehlung des Petitionsausschusses (2. Ausschuss)<br/>Sammelübersicht 331 zu Petitionen<br/>Drucksache 21/8601',
+    ),
     row('19:00', 'ZP 3', 'Aktuelle Stunde', 'auf Verlangen der Fraktion der AfD<br/>Energiepreise'),
   ].map(parseRow);
+  items[2].status = 'beendet';
+  items[2].statusDetail = 'Beschlussempfehlung 21/8473 (Antrag 21/7901 ablehnen) angenommen';
   const page = String(previewPage({ config: makeConfig(), user: null, path: '/vorschau' }, { days: [{ sitting_date: '2026-10-08', session: 24, items }], today: '2026-10-08' }));
 
-  // a committee report at nine comes before a bill in the afternoon
   assert.ok(page.indexOf('<h3>Bürgergeld</h3>') < page.indexOf('<h3>Pflege</h3>'), 'in the order of the day, not bills first');
+  assert.equal((page.match(/<details class="agenda-fold">/g) || []).length, 3, 'every vote item folds');
+  assert.doesNotMatch(page, /<details class="agenda-fold" open/, 'closed by default');
   assert.match(page, /Geplant um <time datetime="2026-10-08T09:00">9:00 Uhr<\/time> · Tagesordnungspunkt 8/);
+  assert.match(page, /Tagesordnungspunkte 39 und 19b, Zusatzpunkt 7/);
   assert.match(page, /Zusatzpunkt 3/);
   assert.doesNotMatch(page, /TOP \d/);
-  // the long text is shortened, and the whole of it is one click away
-  assert.match(page, /<div class="clip"><div class="clip-short"><p class="agenda-text">Zweite und dritte Beratung[^<]* …<\/p><\/div><details class="clip-more"><summary>/);
-  assert.ok(page.includes('Vorschriften und zur Änderung weiterer Vorschriften</p>'), 'the full text is on the page');
-  assert.equal((page.match(/class="clip"/g) || []).length, 1, 'short texts are not folded');
+  // closed, an item says in a line what it is about – its own title, without the procedure
+  assert.match(page, /<span class="agenda-teaser">Bürgergeld abschaffen<\/span>/);
+  assert.match(page, /<span class="agenda-teaser">Entwurf eines Gesetzes zur Stärkung der Pflege<\/span>/);
+  // votes without debate: counted by kind, and listed by title inside
+  assert.match(page, /<span class="agenda-teaser">Ohne Debatte: 2 Sammelübersichten zu Petitionen und 1 Antrag\.<\/span>/);
+  assert.match(page, /<ul class="agenda-bundle"><li><strong>Natur erleben<\/strong> <span class="meta">Antrag · Grüne<\/span><\/li><li><strong>2 Sammelübersichten zu Petitionen \(Nr\. 330 bis 331\)<\/strong>/, 'the petition overviews in one line');
+  assert.match(page, /<strong>Ergebnis laut Bundestag:<\/strong> Beschlussempfehlung 21\/8473 \(Antrag 21\/7901 ablehnen\) angenommen/);
+  // the agenda's own words, in full, folded away
+  assert.match(page, /<details class="agenda-wording"><summary>Wortlaut der Tagesordnung<\/summary><p class="agenda-text">Zweite und dritte Beratung des von der Bundesregierung eingebrachten Entwurfs eines Gesetzes zur Stärkung der Pflege<\/p><\/details>/);
+  assert.doesNotMatch(page, / …</, 'nothing is cut short');
 });

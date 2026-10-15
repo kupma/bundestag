@@ -157,6 +157,68 @@ const strongest = (kinds) => KIND_ORDER.find((k) => kinds.includes(k)) || 'sonst
 // what the links and the label already say.
 const PROCEDURAL = /^(?:Drucksachen?\b|Überweisungsvorschlag|Zu den Reden|Federführung|Mitberatung)/i;
 
+// What a part of an agenda item is, who brought it in, and its own title.
+// The agenda says it in a sentence of procedure first – "Beratung der
+// Beschlussempfehlung des Ausschusses für Tourismus (20. Ausschuss) / zu dem
+// Antrag der Fraktion BÜNDNIS 90/DIE GRÜNEN" – and the title follows on the
+// next line ("Natur erleben, Umwelt schützen"). A bill names itself inside the
+// procedure: "… eingebrachten Entwurfs eines Gesetzes zur …". Where none of
+// that is found, the fields stay empty and the page shows the agenda's text.
+const FRAME = /^(?:[a-z]{1,2}\)\s*)?(?:zu (?:dem|der|den)\b|Beratung\b|(?:Erste|Zweite|Dritte|Zweite und dritte) Beratung\b|Beschlussempfehlung und Bericht\b|Bericht\b|Wahlvorschlag\b)/i;
+
+const AUTHORS = [
+  [/BÜNDNIS 90\/DIE GRÜNEN|Bündnis 90\/Die Grünen/i, 'Grüne'],
+  [/\bDie Linke\b|\bDIE LINKE\b/, 'Linke'],
+  [/\bSPD\b/, 'SPD'],
+  [/\bCDU\/CSU\b/, 'CDU/CSU'],
+  [/\bAfD\b/, 'AfD'],
+  [/\bFDP\b/, 'FDP'],
+  [/\bBSW\b/, 'BSW'],
+];
+
+function authorOf(frame) {
+  if (/(?:von der|der|durch die) Bundesregierung\b/.test(frame)) return 'Bundesregierung';
+  if (/(?:vom|des|von dem) Bundesrat/.test(frame)) return 'Bundesrat';
+  const m = frame.match(/\bFraktion(?:en)?\b(.*)$/);
+  if (!m) return '';
+  return AUTHORS.map(([re, name]) => ({ name, at: m[1].search(re) }))
+    .filter((a) => a.at >= 0)
+    .sort((a, b) => a.at - b.at)
+    .map((a) => a.name)
+    .join(' und ');
+}
+
+export function gistOf(lines) {
+  const text = lines.filter((l) => !PROCEDURAL.test(l));
+  let i = 0;
+  while (i < text.length && FRAME.test(text[i])) i++;
+  const frameLines = text.slice(0, i);
+  const titleLines = [];
+  while (i < text.length && !FRAME.test(text[i])) titleLines.push(text[i++]);
+  const frame = frameLines.join(' ');
+  // an EU proposal's reference ("KOM(2025) 123 endg.; Ratsdok. …") is not part of its title
+  let title = titleLines.join(' ').replace(/\s+(?:KOM|COM)\s*\(\d{4}\).*$/, '').trim();
+  const bill = frameLines.map((l) => l.match(/\bEntwurfs? (eine[sr] .+)$/)).find(Boolean);
+  if (!title && bill) title = `Entwurf ${bill[1]}`;
+  const all = `${frame} ${title}`;
+  const doc = /Entschließungsantrag/i.test(frame)
+    ? 'Entschließungsantrag'
+    : /\bAntrag|\bAntrags\b|\bAnträge/i.test(frame)
+      ? 'Antrag'
+      : bill || /Gesetzentwurf/i.test(frame)
+        ? 'Gesetzentwurf'
+        : /Sammelübersicht|Petition/i.test(all)
+          ? 'Petitionen'
+          : /^Vorschlag für eine[nr]? (?:Verordnung|Richtlinie|Beschluss)/i.test(title)
+            ? 'EU-Vorhaben'
+            : /Unterrichtung/i.test(frame)
+              ? 'Unterrichtung'
+              : /\bWahl/i.test(all)
+                ? 'Wahl'
+                : '';
+  return { doc, by: doc === 'EU-Vorhaben' ? '' : authorOf(frame), title };
+}
+
 // One agenda row as the page shows it. Items with several parts ("a) …
 // b) …") are split, because one part may be a first reading and the next a
 // final vote.
@@ -197,7 +259,12 @@ export function parseRow(row) {
     top: htmlLines(row && row.top).join(' '),
     title: title || (parts[0] ? parts[0][0] : ''),
     // each part with its own Drucksachen: the first is the bill or motion
-    parts: parts.map((p, i) => ({ text: p.filter((l) => !PROCEDURAL.test(l)).join(' '), kind: partKinds[i], drucksachen: drucksachenIn(p).map((d) => d.nummer) })),
+    parts: parts.map((p, i) => ({
+      text: p.filter((l) => !PROCEDURAL.test(l)).join(' '),
+      kind: partKinds[i],
+      drucksachen: drucksachenIn(p).map((d) => d.nummer),
+      ...gistOf(p),
+    })),
     kind,
     vote: VOTE_KINDS.has(kind),
     votes: Math.max(voteParts, VOTE_KINDS.has(kind) ? 1 : 0),
