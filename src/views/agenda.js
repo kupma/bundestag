@@ -1,6 +1,7 @@
 // The preview (/vorschau): what the Bundestag is going to decide in its next
-// sitting days, from its own agenda. Items that end in a vote come first; the
-// rest of the day (first readings, debates, question time) is folded away.
+// sitting days, from its own agenda. Items that end in a vote come first, in
+// the order of the day; the rest (first readings, debates, question time) is
+// folded away.
 
 import { KIND_ORDER } from '../agenda.js';
 import { html } from '../html.js';
@@ -15,7 +16,12 @@ const plural = (n, one, many) => `${n} ${Number(n) === 1 ? one : many}`;
 const shortDay = (ymd) =>
   new Intl.DateTimeFormat('de-DE', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(`${ymd}T12:00:00Z`));
 
-const topLabel = (top) => (!top ? '' : /^\d/.test(top) ? `TOP ${top}` : top);
+// "TOP 8" and "ZP 3" are the agenda's shorthand; written out, readers
+// without the shorthand know what the number is.
+const topLabel = (top) => (!top ? '' : /^\d/.test(top) ? `Tagesordnungspunkt ${top}` : top.replace(/^ZP\s*/i, 'Zusatzpunkt '));
+
+// "09:00" reads "9:00 Uhr".
+const clock = (time) => time.replace(/^0(?=\d:)/, '');
 
 // Opening, breaks and closing are on the agenda too, but say nothing.
 const PROCEDURAL = /^Sitzungs(?:eröffnung|ende|unterbrechung)|^(?:Eröffnung|Unterbrechung|Ende) der Sitzung/i;
@@ -45,7 +51,7 @@ function statusPill(item) {
 function when(item, date) {
   const top = topLabel(item.top);
   if (!item.time && !top) return '';
-  return html`<p class="agenda-when">${item.time ? html`<time datetime="${date}T${item.time}">${item.time} Uhr</time>` : ''}${item.time && top ? ' · ' : ''}${top}</p>`;
+  return html`<p class="agenda-when">${item.time ? html`Geplant um <time datetime="${date}T${item.time}">${clock(item.time)} Uhr</time>` : ''}${item.time && top ? ' · ' : ''}${top}</p>`;
 }
 
 function links(item, { search = true } = {}) {
@@ -56,14 +62,32 @@ function links(item, { search = true } = {}) {
   return out.length ? html`<p class="agenda-links">${out.map((l, i) => html`${i ? ' · ' : ''}${l}`)}</p>` : '';
 }
 
+// A long text is shortened, and the whole of it is a click away (a native
+// <details>, so it works without JavaScript; the stylesheet hides the short
+// version while the long one is open).
+function clip(short, full) {
+  return html`<div class="clip"><div class="clip-short">${short}</div><details class="clip-more"><summary><span class="clip-open">Ganzen Text lesen</span><span class="clip-close">Weniger anzeigen</span></summary>${full}</details></div>`;
+}
+
+const PART_MAX = 170;
+const PARTS_SHOWN = 6;
+
 // One part says it in a sentence; several are listed, each with what it is.
 function description(item, max) {
-  const parts = item.parts.filter((p) => p.text);
-  if (parts.length <= 1) return parts.length ? html`<p class="agenda-text">${truncate(parts[0].text, max)}</p>` : '';
-  const shown = parts.slice(0, 6);
-  return html`<ul class="agenda-parts">${shown.map(
-    (p) => html`<li>${AGENDA_PART_LABEL[p.kind] ? html`<span class="pill">${AGENDA_PART_LABEL[p.kind]}</span> ` : ''}${truncate(p.text.replace(/^[a-z]{1,2}\)\s*/, ''), 170)}</li>`,
-  )}</ul>${parts.length > shown.length ? html`<p class="meta">und ${parts.length - shown.length} weitere</p>` : ''}`;
+  const parts = item.parts.filter((p) => p.text).map((p) => ({ ...p, text: p.text.replace(/^[a-z]{1,2}\)\s*/, '') }));
+  if (!parts.length) return '';
+  if (parts.length === 1) {
+    const { text } = parts[0];
+    const full = html`<p class="agenda-text">${text}</p>`;
+    return text.length > max ? clip(html`<p class="agenda-text">${truncate(text, max)}</p>`, full) : full;
+  }
+  const list = (shown, cut) =>
+    html`<ul class="agenda-parts">${shown.map(
+      (p) => html`<li>${AGENDA_PART_LABEL[p.kind] ? html`<span class="pill">${AGENDA_PART_LABEL[p.kind]}</span> ` : ''}${cut ? truncate(p.text, PART_MAX) : p.text}</li>`,
+    )}</ul>`;
+  const short = html`${list(parts.slice(0, PARTS_SHOWN), true)}${parts.length > PARTS_SHOWN ? html`<p class="meta">und ${parts.length - PARTS_SHOWN} weitere</p>` : ''}`;
+  const shortened = parts.length > PARTS_SHOWN || parts.some((p) => p.text.length > PART_MAX);
+  return shortened ? clip(short, list(parts, false)) : short;
 }
 
 function voteItem(item, date) {
@@ -104,7 +128,7 @@ function daySection(day, today) {
     <h2 class="agenda-date" id="tag-${date}-titel">${formatDateDe(date)}${date === today ? html` <span class="pill">Heute</span>` : ''}</h2>
     <p class="meta">${day.session ? `${day.session}. Sitzung · ` : ''}${plural(count, 'Tagesordnungspunkt', 'Tagesordnungspunkte')}${votes.length ? ` · ${plural(votes.length, 'Punkt', 'Punkte')} mit Abstimmung` : ''}</p>
     ${votes.length
-      ? html`<ol class="agenda-items">${[...votes].sort(byWeight).map((i) => voteItem(i, date))}</ol>`
+      ? html`<ol class="agenda-items">${votes.map((i) => voteItem(i, date))}</ol>`
       : html`<p>Für diesen Tag ist keine Abstimmung angekündigt.</p>`}
     ${possible.length
       ? html`<h3 class="agenda-sub">Abstimmung möglich</h3>

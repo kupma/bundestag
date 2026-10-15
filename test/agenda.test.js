@@ -4,6 +4,7 @@ import test from 'node:test';
 import { createAgendaClient, drucksachenIn, isoWeek, isoWeekMonday, parseGermanDate, parseRow, parseWeek, syncAgenda, upcomingAgenda } from '../src/agenda.js';
 import { tick } from '../src/scheduler.js';
 import { addDays, berlinDate } from '../src/text.js';
+import { previewPage } from '../src/views/agenda.js';
 import { browser, fakeMailer, makeConfig, makeDb, startApp } from './helpers.js';
 
 // A week as bundestag.de's conferenceWeekJSON returns it (abridged): one
@@ -253,4 +254,25 @@ test('the clock fetches the agenda, and a failure is a note, not a crash', async
   const failed = await tick(ctx, { now: new Date('2026-09-28T09:00:00Z'), forceSync: true });
   assert.ok(failed.notes.some((n) => /Tagesordnung: .*boom/.test(n)));
   await db.close();
+});
+
+test('the preview keeps the order of the day, writes the numbers out and folds long texts', () => {
+  const row = (time, top, title, detail) => ({ time, top, topic: { title, detail }, status: { title: '', detail: '' } });
+  const long = 'Zweite und dritte Beratung des von der Bundesregierung eingebrachten Entwurfs eines Gesetzes zur Stärkung der Pflege' + ' und zur Änderung weiterer Vorschriften'.repeat(12);
+  const items = [
+    row('09:00', '8', 'Bürgergeld', 'Beratung der Beschlussempfehlung und des Berichts des Ausschusses für Arbeit und Soziales zu dem Antrag der Fraktion der AfD<br/>Bürgergeld abschaffen<br/>Drucksache 21/1350'),
+    row('15:30', '5', 'Pflege', `${long}<br/>Drucksache 21/1234`),
+    row('19:00', 'ZP 3', 'Aktuelle Stunde', 'auf Verlangen der Fraktion der AfD<br/>Energiepreise'),
+  ].map(parseRow);
+  const page = String(previewPage({ config: makeConfig(), user: null, path: '/vorschau' }, { days: [{ sitting_date: '2026-10-08', session: 24, items }], today: '2026-10-08' }));
+
+  // a committee report at nine comes before a bill in the afternoon
+  assert.ok(page.indexOf('<h3>Bürgergeld</h3>') < page.indexOf('<h3>Pflege</h3>'), 'in the order of the day, not bills first');
+  assert.match(page, /Geplant um <time datetime="2026-10-08T09:00">9:00 Uhr<\/time> · Tagesordnungspunkt 8/);
+  assert.match(page, /Zusatzpunkt 3/);
+  assert.doesNotMatch(page, /TOP \d/);
+  // the long text is shortened, and the whole of it is one click away
+  assert.match(page, /<div class="clip"><div class="clip-short"><p class="agenda-text">Zweite und dritte Beratung[^<]* …<\/p><\/div><details class="clip-more"><summary>/);
+  assert.ok(page.includes('Vorschriften und zur Änderung weiterer Vorschriften</p>'), 'the full text is on the page');
+  assert.equal((page.match(/class="clip"/g) || []).length, 1, 'short texts are not folded');
 });

@@ -353,6 +353,14 @@ form.inline { display: inline; }
 .agenda-links { font-size: 0.88rem; color: var(--ink-3); }
 .agenda-links a { color: var(--ink-2); }
 .agenda-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+/* a long agenda text: shortened, the whole of it one click away */
+.clip-more > summary { display: inline-block; margin-top: 6px; cursor: pointer; list-style: none; font-size: 0.88rem; font-weight: 600; color: var(--ink-2); text-decoration: underline; text-decoration-color: var(--stone-3); text-underline-offset: 3px; }
+.clip-more > summary::-webkit-details-marker { display: none; }
+.clip-more > summary:hover { color: var(--ink); text-decoration-color: currentColor; }
+.clip-more > summary::after { content: ' ↓'; }
+.clip-more[open] > summary::after { content: ' ↑'; }
+.clip-more[open] .clip-open, .clip-more:not([open]) .clip-close { display: none; }
+.clip:has(> .clip-more[open]) > .clip-short { display: none; }
 .agenda-rest { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
 .agenda-rest summary { cursor: pointer; font-weight: 600; color: var(--ink-2); }
 .agenda-list { list-style: none; padding: 0; margin: 8px 0 0; }

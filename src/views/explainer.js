@@ -264,6 +264,7 @@ const GLOSSARY = [
   ['plenarprotokoll', 'Plenarprotokoll', 'Das wörtliche Protokoll jeder Sitzung. Daraus lesen wir ab, wie die Fraktionen gestimmt haben.'],
   ['plenum', 'Plenum', 'Die Versammlung aller Abgeordneten im Plenarsaal. Nur das Plenum kann für den Bundestag beschließen.'],
   ['schlussabstimmung', 'Schlussabstimmung', 'Die Abstimmung am Ende der dritten Lesung. Mit ihr ist ein Gesetz vom Bundestag beschlossen.'],
+  ['tagesordnung', 'Tagesordnung, Tagesordnungspunkt', 'Die Liste dessen, was in einer Sitzung behandelt wird. Jeder Punkt hat eine Nummer, den Tagesordnungspunkt (TOP); Punkte, die erst nachträglich dazukommen, heißen Zusatzpunkte (ZP). Die Uhrzeiten sind geplant – Debatten dauern oft länger oder kürzer.'],
   ['ueberweisung', 'Überweisung', 'Eine Vorlage geht zur Beratung in die Ausschüsse. Eine Entscheidung in der Sache ist das nicht.'],
   ['vermittlungsausschuss', 'Vermittlungsausschuss', 'Je 16 Mitglieder aus Bundestag und Bundesrat, die einen Kompromiss suchen, wenn beide uneins sind.'],
   ['wahlperiode', 'Wahlperiode', 'Die vier Jahre zwischen zwei Bundestagswahlen. Seit 2025 läuft die 21.'],
