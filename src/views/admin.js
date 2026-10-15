@@ -16,12 +16,14 @@ export function adminPage(view, d) {
       ${yes(d.status.dip, 'DIP-API-Key')}
       ${yes(d.status.agenda, 'Tagesordnung (Vorschau)')}
       ${yes(d.status.claude, `Claude (${config.claudeModel})`)}
+      ${yes(d.status.summaries, `Vorschau-Zusammenfassungen (${config.summaryModel})`)}
       ${yes(d.status.mail, 'E-Mail-Versand')}
       ${yes(d.status.voyage, 'Semantische Suche (optional)')}
       ${yes(d.status.database === 'postgres', d.status.database === 'postgres' ? 'Postgres' : 'PGlite (nur lokal!)')}
       ${yes(d.status.scheduler, 'Zeitplan')}
     </p>
     <p>${d.counts.users} Konten · ${d.counts.subscribers} Newsletter-Abos (bestätigt) · ${d.counts.articles} Artikel · ${d.counts.comments} Kommentare · ${d.counts.chunks} Passagen in ${d.programs.length} Dokumenten</p>
+    <p class="meta">Vorschau: ${d.counts.summaries} Drucksachen zusammengefasst, zusammen ${d.counts.summary_input.toLocaleString('de-DE')} Token rein und ${d.counts.summary_output.toLocaleString('de-DE')} raus.</p>
   </section>
 
   <section class="admin-block">

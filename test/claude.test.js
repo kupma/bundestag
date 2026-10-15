@@ -48,6 +48,18 @@ test('requests structured JSON with adaptive thinking and server-side fallbacks'
   assert.deepEqual(req.body.messages, [{ role: 'user', content: 'Frage' }]);
 });
 
+test('a call on Claude Haiku names its model and goes without fallbacks, which Haiku has none of', async () => {
+  const { requests, fetch } = recorder(sse('{"ok":true}'));
+  const claude = createClaude({ apiKey: 'k', model: 'claude-sonnet-5-5', fetch });
+  await claude.json({ model: 'claude-haiku-5-5', system: 's', prompt: 'p', schema, effort: 'low', maxTokens: 8000 });
+  const [req] = requests;
+  assert.equal(req.body.model, 'claude-haiku-5-5');
+  assert.equal(req.body.fallbacks, undefined);
+  assert.doesNotMatch(req.headers.get('anthropic-beta') || '', /server-side-fallback/);
+  assert.equal(req.body.temperature, undefined, 'Haiku 5.5 takes no sampling parameters');
+  assert.deepEqual(req.body.output_config, { effort: 'low', format: { type: 'json_schema', schema } });
+});
+
 test('refusals and truncation become errors instead of half articles', async () => {
   const refused = createClaude({ apiKey: 'k', model: 'claude-sonnet-5-5', fetch: recorder(sse('', 'refusal')).fetch });
   await assert.rejects(refused.json({ system: 's', prompt: 'p', schema }), /abgelehnt/);

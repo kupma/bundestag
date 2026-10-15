@@ -196,7 +196,8 @@ export function parseRow(row) {
     time,
     top: htmlLines(row && row.top).join(' '),
     title: title || (parts[0] ? parts[0][0] : ''),
-    parts: parts.map((p, i) => ({ text: p.filter((l) => !PROCEDURAL.test(l)).join(' '), kind: partKinds[i] })),
+    // each part with its own Drucksachen: the first is the bill or motion
+    parts: parts.map((p, i) => ({ text: p.filter((l) => !PROCEDURAL.test(l)).join(' '), kind: partKinds[i], drucksachen: drucksachenIn(p).map((d) => d.nummer) })),
     kind,
     vote: VOTE_KINDS.has(kind),
     votes: Math.max(voteParts, VOTE_KINDS.has(kind) ? 1 : 0),

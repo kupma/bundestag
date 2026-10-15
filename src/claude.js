@@ -10,6 +10,7 @@
 // recommends for that case, inside the same call. On Claude Sonnet 5.5 that
 // covers some decline categories, not all; anything still refused becomes a
 // ClaudeError (for one decision's analysis, the article loses that section).
+// Claude Haiku has no server-side fallback, so its requests go without.
 
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -32,20 +33,23 @@ function explain(err) {
   return err;
 }
 
+const fallbacksFor = (model) => (/haiku/.test(model) ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' });
+
 export function createClaude({ apiKey, model, fetch }) {
   if (!apiKey) return null;
   const client = new Anthropic({ apiKey, maxRetries: 3, ...(fetch ? { fetch } : {}) });
 
-  async function json({ system, prompt, schema, effort = 'high', maxTokens = 32000 }) {
+  // `model` overrides the default for one call (the preview's summaries run
+  // on a smaller model than the articles).
+  async function json({ system, prompt, schema, effort = 'high', maxTokens = 32000, model: callModel = model }) {
     let message;
     try {
       // Streaming, because a large max_tokens on a non-streaming request can
       // run into HTTP timeouts; finalMessage() gives the assembled response.
       const stream = client.beta.messages.stream({
-        model,
+        model: callModel,
         max_tokens: maxTokens,
-        betas: ['server-side-fallback-2026-07-01'],
-        fallbacks: 'default',
+        ...fallbacksFor(callModel),
         thinking: { type: 'adaptive' },
         output_config: { effort, format: { type: 'json_schema', schema } },
         system,

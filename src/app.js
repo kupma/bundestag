@@ -39,6 +39,7 @@ import { createLimiter } from './ratelimit.js';
 import { searchLibrary } from './retrieval.js';
 import { tick } from './scheduler.js';
 import { manifest, newsSitemapXml, robotsTxt, sitemapXml } from './seo.js';
+import { summariesFor } from './summaries.js';
 import { addDays, berlinDate, isYmd } from './text.js';
 import {
   accountPage,
@@ -264,7 +265,7 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
     const today = berlinDate();
     const days = await upcomingAgenda(db, { today });
     const last = await db.one('select max(fetched_at) as at from agenda_days');
-    c.html(previewPage(c.view, { days, today, fetchedAt: last && last.at }));
+    c.html(previewPage(c.view, { days, today, fetchedAt: last && last.at, summaries: await summariesFor(db, days) }));
   });
 
   route('GET', '/mitmachen', async (c) => c.html(mitmachenPage(c.view)));
@@ -586,7 +587,10 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
         (select count(*)::int from users where newsletter and email_verified_at is not null) as subscribers,
         (select count(*)::int from articles) as articles,
         (select count(*)::int from comments) as comments,
-        (select count(*)::int from program_chunks) as chunks`);
+        (select count(*)::int from program_chunks) as chunks,
+        (select count(*)::int from drucksache_summaries where summary <> '') as summaries,
+        (select coalesce(sum((usage->>'input')::int), 0)::int from drucksache_summaries) as summary_input,
+        (select coalesce(sum((usage->>'output')::int), 0)::int from drucksache_summaries) as summary_output`);
     const { rows: programs } = await db.query(
       `select p.*, (select count(*)::int from program_chunks k where k.program_id = p.id) as chunk_count from programs p order by p.created_at desc`,
     );
@@ -609,6 +613,7 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
           dip: !!ctx.dip,
           agenda: !!ctx.agenda,
           claude: !!ctx.claude,
+          summaries: !!ctx.claude && !!ctx.dip && config.summaries,
           mail: mailer.configured,
           voyage: !!ctx.embedder,
           database: db.kind,

@@ -184,4 +184,25 @@ create table agenda_days (
 );
 `,
   },
+  {
+    id: 5,
+    sql: `
+-- "Worum es geht": a short summary of each Drucksache behind a big agenda
+-- item (src/summaries.js), written once. An empty summary with attempts is a
+-- try that failed (the text not yet in DIP, an error); it is tried again later.
+create table drucksache_summaries (
+  nummer text primary key,
+  typ text not null default '',
+  titel text not null default '',
+  pdf_url text not null default '',
+  summary text not null default '',
+  model text not null default '',
+  usage jsonb,
+  attempts int not null default 0,
+  last_error text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+`,
+  },
 ];

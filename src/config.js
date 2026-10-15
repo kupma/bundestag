@@ -48,6 +48,11 @@ export function loadConfig(env = process.env) {
     // Public data from bundestag.de; no key needed.
     agenda: env.AGENDA !== 'off',
     agendaBaseUrl: (env.AGENDA_BASE_URL || 'https://www.bundestag.de/apps/plenar/plenar').replace(/\/+$/, ''),
+    // "Worum es geht" for the big agenda items: a few sentences per
+    // Drucksache from Claude Haiku, written once and kept.
+    summaries: env.SUMMARIES !== 'off',
+    summaryModel: env.SUMMARY_MODEL || 'claude-haiku-5-5',
+    summaryMaxPerRun: int(env.SUMMARY_MAX_PER_RUN, 30),
 
     // Optional: semantic search on top of the German full-text search.
     voyageApiKey: env.VOYAGE_API_KEY || '',
