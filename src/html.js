@@ -1,7 +1,7 @@
 // Server-side HTML with escaping by default. Every interpolation in an
 // html`` template is escaped unless it is itself the result of html`` or raw(),
 // so user input (comment bodies, display names, search terms) and source text
-// (programme passages, DIP titles) cannot inject markup.
+// (DIP titles, agenda texts) cannot inject markup.
 
 export class SafeHtml {
   constructor(value) {

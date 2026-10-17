@@ -30,13 +30,10 @@ import {
   validateRegistration,
   verifyPassword,
 } from './auth.js';
-import { importDefaultPrograms, libraryStatus } from './default-library.js';
 import { syncDecisions } from './dip.js';
 import { runJob, recentJobs } from './jobs.js';
 import { mailArticle } from './newsletter.js';
-import { bySeat, createProgram, downloadPdf, ingestProgramPdf, validateProgramMeta } from './programs.js';
 import { createLimiter } from './ratelimit.js';
-import { searchLibrary } from './retrieval.js';
 import { tick } from './scheduler.js';
 import { manifest, newsSitemapXml, robotsTxt, sitemapXml } from './seo.js';
 import { summariesFor } from './summaries.js';
@@ -55,13 +52,11 @@ import {
 import { adminPage, statsPage } from './views/admin.js';
 import { previewPage } from './views/agenda.js';
 import { EXPLAINER_PATH, explainerPage } from './views/explainer.js';
-import { libraryPage, passagePage, programPage } from './views/library.js';
 import { aboutPage, archivePage, articlePage, errorPage, homePage, imprintPage, mitmachenPage, privacyPage, rssFeed } from './views/public.js';
 
 const STATIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'static');
 const MIME = { '.webmanifest': 'application/manifest+json', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.txt': 'text/plain; charset=utf-8', '.woff2': 'font/woff2' };
 const FORM_LIMIT = 100 * 1024;
-const PDF_LIMIT = 80 * 1024 * 1024;
 
 function securityHeaders(config) {
   // Plausible, when switched on, is the one outside script, and the only
@@ -239,7 +234,6 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
     const latest = rows.length
       ? { ...rows[0], body: (await db.one('select body from articles where id = $1', [rows[0].id])).body }
       : null;
-    const programs = await db.one(`select count(*)::int as n from programs where status = 'ready'`);
     // What is on its way: sitting days with decisions but no article yet, and
     // when DIP was last asked – so an empty page explains itself.
     const { rows: preparing } = await db.query(
@@ -252,7 +246,6 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
       homePage(c.view, {
         latest,
         articles: rows,
-        programCount: programs.n,
         preparing: preparing.map((r) => r.sitting_date).reverse(),
         lastSyncAt: lastSync ? lastSync.finished_at : null,
         upcoming: await upcomingAgenda(db, { today: berlinDate(), limit: 5 }),
@@ -317,67 +310,11 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
     c.redirect(fromAdmin ? '/admin?ok=geloescht' : `/artikel/${comment.slug}#kommentare`);
   });
 
-  route('GET', '/programme', async (c) => {
-    const q = String(c.query.get('q') || '').slice(0, 200);
-    if (q && !limits.search.hit(c.ip)) throw new HttpError(429, 'Zu viele Suchanfragen. Bitte kurz warten.');
-    const { rows: programs } = await db.query(
-      `select slug, party, title, kind, election, page_count from programs where status = 'ready'`,
-    );
-    programs.sort(bySeat);
-    const hits = q ? await searchLibrary(db, q, { limit: 30 }) : [];
-    c.html(libraryPage(c.view, { programs, q, hits }));
-  });
+  // The election programmes and their passages were once a library here;
+  // their addresses lead home now, for links and search engines that know them.
+  for (const pattern of ['/programme', '/programme/:slug', '/stelle/:id']) route('GET', pattern, async (c) => c.redirect('/', 301));
 
-  route('GET', '/programme/:slug', async (c) => {
-    const program = await db.one(
-      `select p.*, (select count(*)::int from program_chunks k where k.program_id = p.id) as chunk_count
-         from programs p where p.slug = $1 and p.status = 'ready'`,
-      [c.params.slug],
-    );
-    if (!program) throw new HttpError(404, 'Dieses Dokument gibt es nicht.');
-    const q = String(c.query.get('q') || '').slice(0, 200);
-    if (q && !limits.search.hit(c.ip)) throw new HttpError(429, 'Zu viele Suchanfragen. Bitte kurz warten.');
-    const hits = q ? await searchLibrary(db, q, { programId: program.id, limit: 40 }) : [];
-    const { rows: cited } = await db.query(
-      `select ac.chunk_id, k.page, a.slug, a.title, a.sitting_date
-         from article_citations ac
-         join program_chunks k on k.id = ac.chunk_id
-         join articles a on a.id = ac.article_id and a.status = 'published'
-        where k.program_id = $1 order by a.sitting_date desc, k.page limit 20`,
-      [program.id],
-    );
-    c.html(programPage(c.view, { program, q, hits, cited }));
-  });
-
-  route('GET', '/stelle/:id', async (c) => {
-    const passage = await db.one(
-      `select k.id, k.page, k.ord, k.text, k.program_id, p.slug, p.party, p.title, p.kind, p.source_url
-         from program_chunks k join programs p on p.id = k.program_id
-        where k.id = $1 and p.status = 'ready'`,
-      [Number(c.params.id) || 0],
-    );
-    if (!passage) throw new HttpError(404, 'Diese Passage gibt es nicht (mehr).');
-    const prev = await db.one(
-      `select id from program_chunks where program_id = $1 and (page, ord) < ($2, $3) order by page desc, ord desc limit 1`,
-      [passage.program_id, passage.page, passage.ord],
-    );
-    const next = await db.one(
-      `select id from program_chunks where program_id = $1 and (page, ord) > ($2, $3) order by page, ord limit 1`,
-      [passage.program_id, passage.page, passage.ord],
-    );
-    const { rows: citedIn } = await db.query(
-      `select a.slug, a.title, a.sitting_date from article_citations ac join articles a on a.id = ac.article_id
-        where ac.chunk_id = $1 and a.status = 'published' order by a.sitting_date desc`,
-      [passage.id],
-    );
-    c.html(passagePage(c.view, { passage, prev, next, citedIn }));
-  });
-
-  route('GET', '/ueber', async (c) => {
-    const { rows: programs } = await db.query(`select slug, party, title from programs where status = 'ready'`);
-    programs.sort(bySeat);
-    c.html(aboutPage(c.view, { programs }));
-  });
+  route('GET', '/ueber', async (c) => c.html(aboutPage(c.view)));
   route('GET', '/impressum', async (c) => c.html(imprintPage(c.view)));
   route('GET', '/datenschutz', async (c) => c.html(privacyPage(c.view)));
 
@@ -397,8 +334,7 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
 
   route('GET', '/sitemap.xml', async (c) => {
     const { rows: articles } = await db.query(`${ARTICLE_LIST} limit 5000`);
-    const { rows: programs } = await db.query(`select slug, created_at from programs where status = 'ready' order by id`);
-    c.send(200, sitemapXml(config, { articles, programs }), 'application/xml; charset=utf-8');
+    c.send(200, sitemapXml(config, { articles }), 'application/xml; charset=utf-8');
   });
 
   route('GET', '/news-sitemap.xml', async (c) => {
@@ -587,13 +523,9 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
         (select count(*)::int from users where newsletter and email_verified_at is not null) as subscribers,
         (select count(*)::int from articles) as articles,
         (select count(*)::int from comments) as comments,
-        (select count(*)::int from program_chunks) as chunks,
         (select count(*)::int from drucksache_summaries where summary <> '') as summaries,
         (select coalesce(sum((usage->>'input')::int), 0)::int from drucksache_summaries) as summary_input,
         (select coalesce(sum((usage->>'output')::int), 0)::int from drucksache_summaries) as summary_output`);
-    const { rows: programs } = await db.query(
-      `select p.*, (select count(*)::int from program_chunks k where k.program_id = p.id) as chunk_count from programs p order by p.created_at desc`,
-    );
     const { rows: articles } = await db.query('select id, slug, sitting_date, title, status, mailed_at, usage from articles order by sitting_date desc limit 30');
     const { rows: days } = await db.query(
       `select d.sitting_date, count(*)::int as n, count(*) filter (where d.importance >= 0)::int as in_depth, a.slug
@@ -615,17 +547,14 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
           claude: !!ctx.claude,
           summaries: !!ctx.claude && !!ctx.dip && config.summaries,
           mail: mailer.configured,
-          voyage: !!ctx.embedder,
           database: db.kind,
           scheduler: config.scheduler,
         },
         counts,
-        programs,
         articles,
         days,
         comments,
         jobs: await recentJobs(db, 30),
-        standard: await libraryStatus(db),
         suggestedDate: days.find((d) => !d.slug)?.sitting_date || addDays(today, -1),
       }),
     );
@@ -673,61 +602,6 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
       return c.redirect('/admin?ok=versand');
     }
     throw new HttpError(404);
-  });
-
-  function startImport(meta, getBytes) {
-    return createProgram(db, meta).then((program) => {
-      background('import', () =>
-        runJob(db, `programm:${program.slug}`, async (log) => {
-          const bytes = await getBytes();
-          log(`${(bytes.length / 1024 / 1024).toFixed(1)} MB geladen`);
-          return ingestProgramPdf({ db, embedder: ctx.embedder, log }, program.id, bytes);
-        }).catch(async (err) => {
-          await db.query(`update programs set status = 'error', error = $2 where id = $1 and status = 'processing'`, [program.id, err.message]);
-          throw err;
-        }),
-      );
-      return program;
-    });
-  }
-
-  route('POST', '/admin/programme', async (c) => {
-    if (!requireAdmin(c)) return;
-    const v = validateProgramMeta({ party: c.form.party, title: c.form.title, kind: c.form.kind, election: c.form.election, sourceUrl: c.form.source_url });
-    if (!v.meta.sourceUrl) v.errors.push('Bitte die Adresse des PDFs angeben oder eine Datei hochladen.');
-    if (v.errors.length) throw new HttpError(400, v.errors.join(' '));
-    await startImport(v.meta, () => downloadPdf(v.meta.sourceUrl, { fetch: ctx.fetch }));
-    c.redirect('/admin?ok=import');
-  });
-
-  route(
-    'POST',
-    '/admin/programme/upload',
-    async (c) => {
-      if (!c.user || !c.user.is_admin) return c.send(403, JSON.stringify({ error: 'Nur für Admins.' }), 'application/json');
-      const q = Object.fromEntries(c.query.entries());
-      const v = validateProgramMeta({ party: q.party, title: q.title, kind: q.kind, election: q.election, sourceUrl: q.source_url });
-      if (v.errors.length) return c.send(400, JSON.stringify({ error: v.errors.join(' ') }), 'application/json');
-      const bytes = c.rawBody;
-      if (!bytes || bytes.subarray(0, 5).toString('latin1') !== '%PDF-') {
-        return c.send(400, JSON.stringify({ error: 'Die Datei ist kein PDF.' }), 'application/json');
-      }
-      const program = await startImport(v.meta, async () => bytes);
-      c.send(202, JSON.stringify({ ok: true, slug: program.slug }), 'application/json');
-    },
-    { raw: PDF_LIMIT },
-  );
-
-  route('POST', '/admin/programme/standard', async (c) => {
-    if (!requireAdmin(c)) return;
-    background('bibliothek', () => importDefaultPrograms(ctx, { force: true }));
-    c.redirect('/admin?ok=import');
-  });
-
-  route('POST', '/admin/programme/:id/loeschen', async (c) => {
-    if (!requireAdmin(c)) return;
-    await db.query('delete from programs where id = $1', [Number(c.params.id) || 0]);
-    c.redirect('/admin?ok=geloescht');
   });
 
   // --- the request loop ---------------------------------------------------------------

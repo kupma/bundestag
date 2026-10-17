@@ -49,7 +49,7 @@ export function composeLetter(config, article, user) {
     ...(actions.length
       ? ['Was du tun kannst:', ...actions.map((a) => `– ${a.text}${a.link ? ` (${a.link.label}: ${a.link.url})` : ''}`), '']
       : []),
-    `Ganzer Artikel mit Fundstellen und Diskussion: ${url}`,
+    `Ganzer Artikel mit Quellen und Diskussion: ${url}`,
     '',
     '—',
     `Du bekommst diese E-Mail, weil du den Newsletter von ${config.siteName} abonniert hast.`,
@@ -83,9 +83,9 @@ ${actions
   .join('\n')}
 </div>`
   : ''}
-<p style="margin:28px 0 4px"><a href="${e(url)}" style="background:${C.ink};color:${C.paper};padding:13px 22px;border-radius:999px;text-decoration:none;font-weight:600;font-size:15px;display:inline-block">Ganzer Artikel mit Fundstellen</a></p>
+<p style="margin:28px 0 4px"><a href="${e(url)}" style="background:${C.ink};color:${C.paper};padding:13px 22px;border-radius:999px;text-decoration:none;font-weight:600;font-size:15px;display:inline-block">Ganzer Artikel mit Quellen</a></p>
 </div>
-<p style="font-size:12px;line-height:1.6;color:${C.ink3};margin:18px 6px 0">Die Einordnungen erstellt eine KI (Claude) aus Bundestagsdokumenten und den Wahlprogrammen; jedes Zitat wird automatisch geprüft. Du bekommst diese E-Mail, weil du den Newsletter abonniert hast. <a href="${e(unsubscribeUrl)}" style="color:${C.ink3}">Abbestellen</a></p>
+<p style="font-size:12px;line-height:1.6;color:${C.ink3};margin:18px 6px 0">Die Texte schreibt eine KI (Claude) aus den Dokumenten des Bundestags; jede Quelle ist im Artikel verlinkt. Du bekommst diese E-Mail, weil du den Newsletter abonniert hast. <a href="${e(unsubscribeUrl)}" style="color:${C.ink3}">Abbestellen</a></p>
 </div></body></html>`;
 
   return { subject: `${article.title} – ${config.siteName}`, text, html, unsubscribeUrl };

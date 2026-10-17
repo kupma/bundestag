@@ -1,25 +1,13 @@
-export const ALIGNMENT_LABEL = {
-  entspricht: 'Entspricht dem Programm',
-  teilweise: 'Teilweise im Programm',
-  widerspricht: 'Widerspricht dem Programm',
-  nicht_thematisiert: 'Im Programm nicht thematisiert',
-};
-
-export const ALIGNMENT_SHORT = {
-  entspricht: 'entspricht',
-  teilweise: 'teilweise',
-  widerspricht: 'widerspricht',
-  nicht_thematisiert: 'nicht thematisiert',
-};
-
+// How a parliamentary group voted, in a word, and in the order the page
+// groups them.
 export const VOTE_LABEL = {
-  'dafür': 'Fraktion stimmte mit Ja',
-  dagegen: 'Fraktion stimmte mit Nein',
-  enthalten: 'Fraktion enthielt sich',
-  gespalten: 'Fraktion stimmte uneinheitlich',
-  unbekannt: 'Abstimmung der Fraktion unbekannt',
-  nicht_anwendbar: '',
+  'dafür': 'Ja',
+  dagegen: 'Nein',
+  enthalten: 'Enthaltung',
+  gespalten: 'uneinheitlich',
+  unbekannt: 'unbekannt',
 };
+export const VOTE_ORDER = ['dafür', 'dagegen', 'enthalten', 'gespalten', 'unbekannt'];
 
 export const RESULT_LABEL = {
   angenommen: 'Angenommen',
@@ -49,30 +37,7 @@ export const AGENDA_PART_LABEL = {
   sonstiges: '',
 };
 
-// The 21st Bundestag, left to right as seen from the President. The landing
-// page draws it; the explainer counts the coalition's majority from it.
-export const PLENUM = [
-  { party: 'Die Linke', short: 'Linke', seats: 64 },
-  { party: 'Bündnis 90/Die Grünen', short: 'Grüne', seats: 85 },
-  { party: 'SPD', short: 'SPD', seats: 120, coalition: true },
-  { party: 'CDU/CSU', short: 'CDU/CSU', seats: 208, coalition: true },
-  { party: 'AfD', short: 'AfD', seats: 152 },
-];
-
-// Short column headings for the overview table.
-export function shortParty(party, kind) {
-  const p = String(party || '').toLowerCase();
-  if (kind === 'koalitionsvertrag' || (/spd/.test(p) && /cdu|csu/.test(p))) return 'Koalition';
-  if (/cdu|csu|union/.test(p)) return 'Union';
-  if (/spd/.test(p)) return 'SPD';
-  if (/grün|gruen|bündnis/.test(p)) return 'Grüne';
-  if (/linke/.test(p)) return 'Linke';
-  if (/afd/.test(p)) return 'AfD';
-  if (/fdp/.test(p)) return 'FDP';
-  if (/bsw|wagenknecht/.test(p)) return 'BSW';
-  if (/ssw/.test(p)) return 'SSW';
-  return String(party || '').slice(0, 10);
-}
+export { PLENUM } from '../plenum.js';
 
 // CSS class suffixes without umlauts.
 export const cls = (s) => String(s || '').replace(/ü/g, 'ue').replace(/[^a-z_]/gi, '');

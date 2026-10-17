@@ -1,38 +1,24 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { checkAnalysis, generateArticle, pendingDates } from '../src/articles.js';
+import { ARTICLE_VERSION, checkVotes, generateArticle, outdatedArticles, pendingDates } from '../src/articles.js';
 import { syncDecisions } from '../src/dip.js';
 import { mailArticle } from '../src/newsletter.js';
-import { createProgram, ingestProgramPdf } from '../src/programs.js';
 import { tick } from '../src/scheduler.js';
-import { fakeClaude, fakeDip, fakeMailer, makeConfig, makeDb, makePdf, samplePositions } from './helpers.js';
+import { fakeClaude, fakeDip, fakeMailer, makeConfig, makeDb, samplePositions } from './helpers.js';
 
 // The Claude calls made since `from`, by kind.
 function callsSince(claude, from) {
   const calls = claude.calls.slice(from);
   return {
-    queries: calls.filter((c) => c.schema.required.includes('items')),
-    analyses: calls.filter((c) => c.schema.required.includes('parties')),
+    analyses: calls.filter((c) => c.schema.required.includes('votes')),
     frames: calls.filter((c) => c.schema.required.includes('lede')),
   };
 }
 
-async function setup({ programs = true } = {}) {
+async function setup() {
   const db = await makeDb();
-  const ctx = { db, config: makeConfig({ settleHours: 0 }), claude: fakeClaude(), dip: fakeDip(), embedder: null, mailer: fakeMailer() };
-  if (programs) {
-    const docs = [
-      ['SPD', 'wahlprogramm', ['Wir werden die Mietpreisbremse verlängern und Mieterinnen und Mieter schützen.', 'Kostenloses Mittagessen in allen Schulen.']],
-      ['CDU/CSU', 'wahlprogramm', ['Mieten: Wir setzen auf Neubau. Die Mietpreisbremse lassen wir auslaufen.', 'Schulessen ist Sache der Länder.']],
-      ['Die Linke', 'wahlprogramm', ['Mietendeckel statt Mietpreisbremse: Mieten einfrieren.', 'Mittagessen gratis für alle Kinder in Schule und Kita.']],
-      ['CDU/CSU und SPD', 'koalitionsvertrag', ['Die Mietpreisbremse wird um vier Jahre verlängert.']],
-    ];
-    for (const [party, kind, pages] of docs) {
-      const p = await createProgram(db, { party, title: 'Programm', kind, election: '2025', sourceUrl: `https://example.org/${encodeURIComponent(party)}.pdf` });
-      await ingestProgramPdf({ db }, p.id, await makePdf(pages.map((t) => [t])));
-    }
-  }
+  const ctx = { db, config: makeConfig({ settleHours: 0 }), claude: fakeClaude(), dip: fakeDip(), mailer: fakeMailer() };
   await syncDecisions(ctx, { start: '2026-09-20', end: '2026-09-25' });
   return ctx;
 }
@@ -43,9 +29,10 @@ test('generateArticle writes a checked, structured article', async () => {
   assert.equal(result.slug, '2026-09-24');
 
   const article = await ctx.db.one('select * from articles where slug = $1', ['2026-09-24']);
-  assert.equal(article.title, 'Mietpreisbremse bleibt – wie versprochen?');
+  assert.equal(article.title, 'Mietpreisbremse bleibt bis 2029');
   assert.equal(article.model, 'fake-model');
   const body = article.body;
+  assert.equal(body.version, ARTICLE_VERSION);
   assert.equal(body.decisions.length, 2, 'bill and motion in depth');
   assert.equal(body.others.length, 1, 'petitions on the short list');
   assert.match(body.others[0].title, /Sammelübersicht/);
@@ -62,40 +49,31 @@ test('generateArticle writes a checked, structured article', async () => {
     { level: 'alltag', text: 'Prüfe mit dem Mietspiegel, ob deine Miete zulässig ist.', resource: 'mieterbund' },
     { level: 'gemeinsam', text: 'Sprich mit deinen Nachbarn über ihre Erfahrungen.', resource: null },
   ]);
-  const analysis = ctx.claude.calls.find((c) => c.schema.required.includes('parties'));
+  const analysis = ctx.claude.calls.find((c) => c.schema.required.includes('votes'));
   const offered = analysis.schema.properties.actions.items.properties.resource.enum;
   assert.ok(offered.includes('mieterbund'));
   assert.ok(!offered.includes('abgeordnete') && !offered.includes('petition'), 'general participation links are not offered');
   assert.ok(bill.sources.some((s) => s.label === 'Plenarprotokoll 21/45'));
   assert.ok(bill.sources.some((s) => s.label.startsWith('Drucksache 21/1234')));
-  assert.equal(bill.parties.length, 4, 'every programme appears once');
-
-  const [first, second, third, coalition] = bill.parties;
-  // A valid citation with a real quote survives intact.
-  assert.equal(first.alignment, 'entspricht');
-  assert.equal(first.citations.length, 1);
-  assert.ok(first.citations[0].quote.length > 0);
-  assert.match(first.citations[0].url, /#page=\d+$/);
-  // A quote that is not in the passage is dropped; the link stays.
-  assert.equal(second.alignment, 'widerspricht');
-  assert.equal(second.citations[0].quote, '');
-  // A verdict citing a passage it was never shown is withdrawn.
-  assert.equal(third.alignment, 'nicht_thematisiert');
-  assert.deepEqual(third.citations, []);
-  assert.match(third.assessment, /keine belegbare Aussage/);
-  // The coalition agreement has no parliamentary group to vote.
-  assert.equal(coalition.kind, 'koalitionsvertrag');
-  assert.equal(coalition.vote, 'nicht_anwendbar');
-  assert.ok(body.checks.droppedQuotes >= 1 && body.checks.withdrawn >= 1);
-
-  // Citations are recorded for the reverse lookup ("zitiert in").
-  const cites = await ctx.db.one('select count(*)::int as n from article_citations where article_id = $1', [article.id]);
-  assert.ok(cites.n >= 2);
+  // Every group once, in the order they sit; a vote that is none, or a group
+  // the model left out, stays unknown.
+  assert.deepEqual(bill.votes, [
+    { fraktion: 'Linke', vote: 'unbekannt' },
+    { fraktion: 'Grüne', vote: 'unbekannt' },
+    { fraktion: 'SPD', vote: 'dafür' },
+    { fraktion: 'CDU/CSU', vote: 'dafür' },
+    { fraktion: 'AfD', vote: 'dagegen' },
+  ]);
+  assert.equal(bill.parties, undefined, 'no programme verdicts any more');
+  assert.equal(body.checks, undefined);
+  const cites = await ctx.db.one('select count(*)::int as n from article_citations');
+  assert.equal(cites.n, 0);
 
   // The protocol's vote sentences reached the model for the bill.
-  const analysisPrompt = ctx.claude.calls.find((c) => c.schema.required.includes('parties') && c.prompt.includes('Mietpreisbremse')).prompt;
+  const analysisPrompt = ctx.claude.calls.find((c) => c.schema.required.includes('votes') && c.prompt.includes('Mietpreisbremse')).prompt;
   assert.match(analysisPrompt, /mit den Stimmen der Fraktionen der CDU\/CSU und SPD/);
   assert.match(analysisPrompt, /A\. Problem und Ziel/);
+  assert.doesNotMatch(analysisPrompt, /<programm|Wahlprogramm/);
 
   // Details are stored so the next run does not refetch them.
   const d = await ctx.db.one(`select details from decisions where vorgang_id = '318001'`);
@@ -135,43 +113,20 @@ test('a rewrite with nothing new keeps the article and spends no tokens', async 
   await ctx.db.close();
 });
 
-test('re-importing a programme invalidates the analyses that cite it', async () => {
+test('no article without Claude or without decisions', async () => {
   const ctx = await setup();
-  await generateArticle(ctx, '2026-09-24');
-  const calls = ctx.claude.calls.length;
-  // Same text, new passages – and new passage ids for every citation.
-  const spd = await ctx.db.one(`select id from programs where party = 'SPD'`);
-  await ingestProgramPdf({ db: ctx.db }, spd.id, await makePdf([['Wir werden die Mietpreisbremse verlängern und Mieterinnen und Mieter schützen.'], ['Kostenloses Mittagessen in allen Schulen.']]));
-  await generateArticle(ctx, '2026-09-24', { force: true, reuse: true });
-  const since = callsSince(ctx.claude, calls);
-  assert.equal(since.analyses.length, 2);
-  const { body } = await ctx.db.one('select body from articles');
-  const cited = body.decisions.flatMap((s) => s.parties.flatMap((p) => p.citations.map((c) => c.chunkId)));
-  const { n } = await ctx.db.one('select count(*)::int as n from program_chunks where id = any($1::int[])', [cited]);
-  assert.equal(n, new Set(cited).size, 'every citation points at a passage that exists');
-  await ctx.db.close();
-});
-
-test('no article without programmes, without Claude, or without decisions', async () => {
-  const ctx = await setup({ programs: false });
-  await assert.rejects(generateArticle(ctx, '2026-09-24'), /Bibliothek enthält noch kein Wahlprogramm/);
   await assert.rejects(generateArticle({ ...ctx, claude: null }, '2026-09-24'), /ANTHROPIC_API_KEY/);
+  await assert.rejects(generateArticle(ctx, '2026-09-23'), /keine Beschlüsse/);
   await ctx.db.close();
-
-  const full = await setup();
-  await assert.rejects(generateArticle(full, '2026-09-23'), /keine Beschlüsse/);
-  await full.db.close();
 });
 
-test('checkAnalysis keeps unknown votes honest', () => {
-  const programs = [{ id: 1, party: 'SPD', title: 'P', slug: 's', kind: 'wahlprogramm', source_url: '' }];
-  const passages = new Map([[1, [{ id: 10, page: 3, text: 'Wir wollen mehr Wohnungen bauen.' }]]]);
-  const { parties } = checkAnalysis({ parties: [{ program_id: 1, vote: 'nicht_anwendbar', alignment: 'teilweise', assessment: 'x', citations: [{ passage_id: 10, quote: 'mehr Wohnungen bauen' }] }] }, programs, passages);
-  assert.equal(parties[0].vote, 'unbekannt', 'a party programme always has a group that could vote');
-  assert.equal(parties[0].citations[0].url, '', 'no source URL, no PDF link');
-  const missing = checkAnalysis({ parties: [] }, programs, passages).parties[0];
-  assert.equal(missing.alignment, 'nicht_thematisiert');
-  assert.equal(missing.vote, 'unbekannt');
+test('checkVotes keeps unknown votes honest', () => {
+  const all = (vote) => ['Linke', 'Grüne', 'SPD', 'CDU/CSU', 'AfD'].map((fraktion) => ({ fraktion, vote }));
+  assert.deepEqual(checkVotes(null), all('unbekannt'));
+  assert.deepEqual(checkVotes(all('dafür'), { known: false }), all('unbekannt'), 'no protocol, no votes');
+  const twice = checkVotes([{ fraktion: 'AfD', vote: 'dagegen' }, { fraktion: 'AfD', vote: 'dafür' }, { fraktion: 'FDP', vote: 'dafür' }]);
+  assert.deepEqual(twice.map((v) => v.fraktion), ['Linke', 'Grüne', 'SPD', 'CDU/CSU', 'AfD'], 'only the groups in the hall');
+  assert.equal(twice[4].vote, 'dagegen', 'the first answer counts');
 });
 
 test('pendingDates waits until a sitting day has stopped changing', async () => {
@@ -253,7 +208,7 @@ test('a refused decision drops out of the article instead of sinking it', async 
     model: 'fake-model',
     calls: good.calls,
     async json(req) {
-      if (req.schema.required.includes('parties') && req.prompt.includes('Titel: Kostenloses Mittagessen')) {
+      if (req.schema.required.includes('votes') && req.prompt.includes('Titel: Kostenloses Mittagessen')) {
         throw new Error('Claude hat die Anfrage abgelehnt (test).');
       }
       return good.json(req);
@@ -274,7 +229,9 @@ test('three failures in a day stop the retries for that date', async () => {
   ctx.claude = { model: 'broken', json: async () => { calls++; throw new Error('kaputt'); } };
   const now = new Date('2026-09-25T08:00:00Z');
   for (let i = 0; i < 5; i++) await tick(ctx, { now });
-  assert.equal(calls, 3);
+  assert.equal(calls, 3 * 2, 'three attempts, one call per decision');
+  const runs = await ctx.db.query(`select ok from job_runs where kind = 'article:2026-09-24'`);
+  assert.deepEqual(runs.rows.map((r) => r.ok), [false, false, false]);
   await ctx.db.close();
 });
 
@@ -335,8 +292,6 @@ test('an article is rewritten when DIP adds decisions for its day', async () => 
   const since = callsSince(ctx.claude, calls);
   assert.equal(since.analyses.length, 1);
   assert.match(since.analyses[0].prompt, /Titel: Kostenloses Mittagessen/);
-  assert.equal(since.queries.length, 1);
-  assert.doesNotMatch(since.queries[0].prompt, /Mietpreisbremse/);
   assert.equal(since.frames.length, 1, 'the introduction now covers two decisions');
   const bill = (body) => body.decisions.find((s) => s.title.includes('Mietpreisbremse'));
   assert.deepEqual(bill(after.body), bill(before.body));
@@ -353,7 +308,9 @@ test('an article written before the protocol is rewritten once the votes are pub
   await ctx.db.query(`insert into users (email, display_name, password_hash, newsletter, email_verified_at, unsubscribe_token) values ('s@example.de', 'S', 'x', true, now(), 't1')`);
   const first = await tick(ctx, { now: new Date('2026-09-25T08:00:00Z'), forceSync: true });
   assert.deepEqual(first.generated.map((g) => g.date), ['2026-09-24']);
-  assert.equal((await ctx.db.one('select body from articles')).body.protocolAvailable, false);
+  const before = (await ctx.db.one('select body from articles')).body;
+  assert.equal(before.protocolAvailable, false);
+  assert.ok(before.decisions.every((d) => d.votes.every((v) => v.vote === 'unbekannt')), 'no protocol, no votes');
   assert.equal(ctx.mailer.sent.length, 1);
 
   const stillMissing = await tick(ctx, { now: new Date('2026-09-25T09:10:00Z'), forceSync: true });
@@ -370,6 +327,8 @@ test('an article written before the protocol is rewritten once the votes are pub
   assert.ok(analyses.every((a) => /mit den Stimmen der Fraktion/.test(a.prompt)));
   const body = (await ctx.db.one('select body from articles')).body;
   assert.equal(body.protocolAvailable, true);
+  const bill = body.decisions.find((d) => d.title.includes('Mietpreisbremse'));
+  assert.equal(bill.votes.find((v) => v.fraktion === 'SPD').vote, 'dafür');
   assert.equal(ctx.mailer.sent.length, 1, 'the newsletter is not sent again');
   await ctx.db.close();
 });
@@ -386,8 +345,29 @@ test("yesterday's sitting is written the next morning, even while DIP is still a
   await ctx.db.close();
 });
 
-test('programmes are ordered as the groups sit in the hall, the coalition agreement last', async () => {
-  const { bySeat } = await import('../src/programs.js');
-  const parties = ['AfD', 'CDU, CSU und SPD', 'SPD', 'Die Linke', 'CDU/CSU', 'Bündnis 90/Die Grünen'].map((party) => ({ party }));
-  assert.deepEqual(parties.sort(bySeat).map((p) => p.party), ['Die Linke', 'Bündnis 90/Die Grünen', 'SPD', 'CDU/CSU', 'AfD', 'CDU, CSU und SPD']);
+test('an article from an older version of the pipeline is written anew, one per tick', async () => {
+  const ctx = await setupWith({ positions: [...samplePositions('2026-09-23'), ...samplePositions('2026-09-24')] });
+  await syncDecisions(ctx, { start: '2026-09-20', end: '2026-09-25' });
+  await generateArticle(ctx, '2026-09-23');
+  await generateArticle(ctx, '2026-09-24');
+  assert.deepEqual(await outdatedArticles(ctx.db), []);
+
+  // What the first version stored: programme verdicts, no version, no votes.
+  await ctx.db.query(`update articles set body = (body - 'version') || '{"intro": ["Alt."]}'::jsonb`);
+  assert.deepEqual(await outdatedArticles(ctx.db), ['2026-09-24', '2026-09-23'], 'newest first');
+
+  const calls = ctx.claude.calls.length;
+  const report = await tick(ctx, { now: new Date('2026-09-25T10:00:00Z'), forceSync: true });
+  assert.deepEqual(report.refreshed.map(({ date, why }) => ({ date, why })), [{ date: '2026-09-24', why: 'neu geschrieben (ältere Fassung)' }]);
+  const { analyses, frames } = callsSince(ctx.claude, calls);
+  assert.equal(analyses.length, 2, 'every decision anew, nothing reused');
+  assert.equal(frames.length, 1);
+  const fresh = (await ctx.db.one(`select body from articles where slug = '2026-09-24'`)).body;
+  assert.equal(fresh.version, ARTICLE_VERSION);
+  assert.deepEqual(fresh.intro, ['Absatz eins.', 'Absatz zwei.']);
+  assert.deepEqual(await outdatedArticles(ctx.db), ['2026-09-23']);
+
+  await tick(ctx, { now: new Date('2026-09-25T10:15:00Z'), forceSync: true });
+  assert.deepEqual(await outdatedArticles(ctx.db), []);
+  await ctx.db.close();
 });

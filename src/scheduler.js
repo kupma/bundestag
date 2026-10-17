@@ -1,5 +1,5 @@
-// The clock. Every quarter of an hour: import any standard programme that is
-// still missing, fetch new decisions from DIP (at most hourly) and the agenda
+// The clock. Every quarter of an hour: fetch new decisions from DIP (at most
+// hourly) and the agenda
 // of the coming sitting days (every two hours) with a short summary of each
 // new Drucksache on it, write the
 // article for one finished sitting day (or refresh one that DIP has added to
@@ -9,8 +9,7 @@
 
 import { syncAgenda } from './agenda.js';
 import { pruneTraffic } from './analytics.js';
-import { generateArticle, pendingDates, readyPrograms, refreshCandidates } from './articles.js';
-import { importDefaultPrograms } from './default-library.js';
+import { generateArticle, outdatedArticles, pendingDates, refreshCandidates } from './articles.js';
 import { syncDecisions } from './dip.js';
 import { recentFailures, runJob } from './jobs.js';
 import { mailArticle } from './newsletter.js';
@@ -31,7 +30,7 @@ const state = { lastSync: 0, lastAgenda: 0 };
 export async function tick(ctx, { now = new Date(), forceSync = false } = {}) {
   const { db, config } = ctx;
   const outcome = await db.tryLock(TICK_LOCK, async () => {
-    const report = { sync: null, agenda: null, summaries: null, library: null, generated: [], refreshed: [], mailed: [], notes: [] };
+    const report = { sync: null, agenda: null, summaries: null, generated: [], refreshed: [], mailed: [], notes: [] };
     const today = berlinDate(now);
     const hour = berlinHour(now);
     // Until the first article exists, look back far enough to find the most
@@ -39,13 +38,6 @@ export async function tick(ctx, { now = new Date(), forceSync = false } = {}) {
     const firstRun = !(await db.one('select 1 as x from articles limit 1'));
     const from = addDays(today, -(firstRun ? Math.max(config.lookbackDays, config.backfillDays) : config.lookbackDays));
     const settle = { settleHours: config.settleHours, settledBefore: addDays(today, -config.settleDays) };
-
-    // 0. the standard library – a no-op once everything is imported
-    if (config.defaultLibrary) {
-      const lib = await importDefaultPrograms(ctx, ctx.librarySources ? { sources: ctx.librarySources } : {});
-      if (lib.imported.length || lib.failed.length) report.library = lib;
-      for (const f of lib.failed) report.notes.push(`Bibliothek ${f.key}: ${f.error}`);
-    }
 
     // 1. new decisions
     let synced = false;
@@ -91,12 +83,10 @@ export async function tick(ctx, { now = new Date(), forceSync = false } = {}) {
     // spreads the cost; the first run writes the latest sitting week at once.
     if (!ctx.claude) report.notes.push('ANTHROPIC_API_KEY fehlt – keine Artikel.');
     else if (hour >= config.earliestHour) {
-      const programs = await readyPrograms(db);
-      if (!programs.length) report.notes.push('Die Bibliothek ist noch leer – die Wahlprogramme werden geladen.');
       // Yesterday's sitting is written the next morning, even if DIP is still
       // documenting it; step 2b rewrites the article as the rest arrives.
       const firstDraft = { ...settle, settledBefore: addDays(today, -config.writeAfterDays) };
-      let dates = programs.length ? await pendingDates(db, { from, to: addDays(today, -1), ...firstDraft }) : [];
+      let dates = await pendingDates(db, { from, to: addDays(today, -1), ...firstDraft });
       if (firstRun && dates.length) {
         const latest = dates[dates.length - 1];
         dates = dates.filter((d) => d >= addDays(latest, -6)).slice(-3);
@@ -115,8 +105,10 @@ export async function tick(ctx, { now = new Date(), forceSync = false } = {}) {
 
       // 2b. keep recent articles complete: rewrite one when DIP has added
       // decisions since, or once the plenary protocol (with the votes) is out.
-      // Only what changed goes to Claude again. Never re-sends the newsletter.
-      if (programs.length && !report.generated.length) {
+      // Only what changed goes to Claude again. Failing those, write one
+      // article from an older version of the pipeline anew. Never re-sends
+      // the newsletter.
+      if (!report.generated.length) {
         const { changed, withoutProtocol } = await refreshCandidates(db, { from: addDays(today, -config.lookbackDays), ...settle });
         let due = changed.map((date) => ({ date, why: 'neue Beschlüsse in DIP' }));
         if (!due.length && synced && withoutProtocol.length) {
@@ -128,12 +120,13 @@ export async function tick(ctx, { now = new Date(), forceSync = false } = {}) {
             }
           }
         }
-        for (const { date, why } of due) {
+        if (!due.length) due = (await outdatedArticles(db)).map((date) => ({ date, why: 'neu geschrieben (ältere Fassung)', fresh: true }));
+        for (const { date, why, fresh } of due) {
           if ((await recentFailures(db, `article:${date}`, 24)) >= MAX_FAILURES_PER_DAY) continue;
           try {
             const r = await runJob(db, `article:${date}`, (log) => {
               log(`Aktualisierung: ${why}`);
-              return generateArticle(ctx, date, { force: true, reuse: true, log });
+              return generateArticle(ctx, date, { force: true, reuse: !fresh, log });
             });
             report.refreshed.push({ date, why, slug: r && r.slug });
           } catch (err) {

@@ -5,7 +5,6 @@
 
 import { KIND_ORDER } from '../agenda.js';
 import { html } from '../html.js';
-import { vorlagenOf } from '../summaries.js';
 import { addDays, formatDateDe, formatDateTimeDe, truncate } from '../text.js';
 import { EXPLAINER_PATH } from './explainer.js';
 import { AGENDA_KIND_LABEL, AGENDA_PART_LABEL } from './labels.js';
@@ -17,9 +16,28 @@ const plural = (n, one, many) => `${n} ${Number(n) === 1 ? one : many}`;
 const shortDay = (ymd) =>
   new Intl.DateTimeFormat('de-DE', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(`${ymd}T12:00:00Z`));
 
-// "TOP 8" and "ZP 3" are the agenda's shorthand; written out, readers
-// without the shorthand know what the number is.
-const topLabel = (top) => (!top ? '' : /^\d/.test(top) ? `Tagesordnungspunkt ${top}` : top.replace(/^ZP\s*/i, 'Zusatzpunkt '));
+// "TOP 8", "ZP 3", or several at once ("39, ZP 7, TOP 19b") – the agenda's
+// shorthand, written out so readers without it know what the number is.
+const and = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} und ${xs[xs.length - 1]}` : xs[0] || '');
+
+function topLabel(top) {
+  const tops = [];
+  const extra = [];
+  const other = [];
+  for (const t of String(top || '').split(/\s*[,;]\s*/).filter(Boolean)) {
+    let m;
+    if ((m = t.match(/^(?:TOP\s*)?(\d+[a-z]?)$/i))) tops.push(m[1]);
+    else if ((m = t.match(/^ZP\s*(\d+[a-z]?)$/i))) extra.push(m[1]);
+    else other.push(t);
+  }
+  return [
+    tops.length ? `${tops.length > 1 ? 'Tagesordnungspunkte' : 'Tagesordnungspunkt'} ${and(tops)}` : '',
+    extra.length ? `${extra.length > 1 ? 'Zusatzpunkte' : 'Zusatzpunkt'} ${and(extra)}` : '',
+    ...other,
+  ]
+    .filter(Boolean)
+    .join(', ');
+}
 
 // "09:00" reads "9:00 Uhr".
 const clock = (time) => time.replace(/^0(?=\d:)/, '');
@@ -46,110 +64,191 @@ function statusPill(item) {
     : /abgelehnt/i.test(item.status)
       ? 'abgelehnt'
       : 'sonstiges';
-  return html`<p class="agenda-status"><span class="result result-${cls}">${item.status}</span>${item.statusDetail ? html` <span class="meta">${truncate(item.statusDetail, 200)}</span>` : ''}</p>`;
+  return html`<span class="agenda-status"><span class="result result-${cls}">${item.status}</span></span>`;
 }
+
+const statusDetail = (item) => (item.statusDetail ? html`<p class="agenda-status-detail"><strong>Ergebnis laut Bundestag:</strong> ${item.statusDetail}</p>` : '');
 
 function when(item, date) {
   const top = topLabel(item.top);
   if (!item.time && !top) return '';
-  return html`<p class="agenda-when">${item.time ? html`Geplant um <time datetime="${date}T${item.time}">${clock(item.time)} Uhr</time>` : ''}${item.time && top ? ' · ' : ''}${top}</p>`;
+  return html`<span class="agenda-when">${item.time ? html`Geplant um <time datetime="${date}T${item.time}">${clock(item.time)} Uhr</time>` : ''}${item.time && top ? ' · ' : ''}${top}</span>`;
 }
 
-function links(item, { search = true } = {}) {
+function links(item) {
   const out = [];
-  if (search && item.title) out.push(html`<a href="/programme?q=${encodeURIComponent(truncate(item.title, 80))}">Was die Parteien versprochen haben →</a>`);
   for (const d of item.drucksachen.slice(0, 4)) out.push(html`<a href="${d.url}" target="_blank" rel="noopener">Drucksache ${d.nummer} ↗</a>`);
   if (item.link) out.push(html`<a href="${item.link}" target="_blank" rel="noopener">Beim Bundestag ↗</a>`);
   return out.length ? html`<p class="agenda-links">${out.map((l, i) => html`${i ? ' · ' : ''}${l}`)}</p>` : '';
 }
 
-// A long text is shortened, and the whole of it is a click away (a native
-// <details>, so it works without JavaScript; the stylesheet hides the short
-// version while the long one is open).
-function clip(short, full) {
-  return html`<div class="clip"><div class="clip-short">${short}</div><details class="clip-more"><summary><span class="clip-open">Ganzen Text lesen</span><span class="clip-close">Weniger anzeigen</span></summary>${full}</details></div>`;
-}
-
-const PART_MAX = 170;
-const PARTS_SHOWN = 6;
-
-// One part says it in a sentence; several are listed, each with what it is.
-function description(item, max) {
+// The agenda's own words for each part – procedure first, the title at the
+// end – in full, folded away: the page says it shorter above them.
+function wording(item) {
   const parts = item.parts.filter((p) => p.text).map((p) => ({ ...p, text: p.text.replace(/^[a-z]{1,2}\)\s*/, '') }));
   if (!parts.length) return '';
-  if (parts.length === 1) {
-    const { text } = parts[0];
-    const full = html`<p class="agenda-text">${text}</p>`;
-    return text.length > max ? clip(html`<p class="agenda-text">${truncate(text, max)}</p>`, full) : full;
+  const body =
+    parts.length === 1
+      ? html`<p class="agenda-text">${parts[0].text}</p>`
+      : html`<ul class="agenda-parts">${parts.map(
+          (p) => html`<li>${AGENDA_PART_LABEL[p.kind] ? html`<span class="pill">${AGENDA_PART_LABEL[p.kind]}</span> ` : ''}${p.text}</li>`,
+        )}</ul>`;
+  return html`<details class="agenda-wording"><summary>Wortlaut der Tagesordnung</summary>${body}</details>`;
+}
+
+// The parts of an item, each with the Drucksache it is about and, where one
+// has been written, its summary (src/summaries.js).
+function entriesOf(item, summaries) {
+  const parts = item.parts || [];
+  return parts.map((part) => {
+    const nummer = (part.drucksachen || [])[0] || (parts.length === 1 && item.drucksachen[0] ? item.drucksachen[0].nummer : '');
+    const report = part.report && part.report !== nummer ? { nummer: part.report, s: summaries.get(part.report) || null } : null;
+    return { part, nummer, s: (nummer && summaries.get(nummer)) || null, report };
+  });
+}
+
+// The one the item is mainly about: the bill, else the first with a summary.
+const mainOf = (entries) =>
+  entries.find((e) => e.part.kind === 'gesetz' && e.s) || entries.find((e) => e.s) || entries.find((e) => e.part.kind === 'gesetz') || entries[0];
+
+const isBundle = (item) => item.kind === 'abschliessend' || /vereinfachten Verfahren/i.test(item.title || '');
+
+const originalUrl = (item, e) => (e.s && e.s.pdf_url) || (item.drucksachen.find((d) => d.nummer === e.nummer) || {}).url || '';
+
+const drucksacheLink = (item, e) => {
+  const url = originalUrl(item, e);
+  return url ? html`<a href="${url}" target="_blank" rel="noopener">${e.nummer} ↗</a>` : e.nummer;
+};
+
+// "Antrag · Grüne", "Gesetzentwurf · Bundesregierung"
+const gistMeta = (part) => [part.doc, part.by].filter(Boolean).join(' · ');
+
+const DOC_PLURAL = {
+  Antrag: ['Antrag', 'Anträge'],
+  Gesetzentwurf: ['Gesetzentwurf', 'Gesetzentwürfe'],
+  Entschließungsantrag: ['Entschließungsantrag', 'Entschließungsanträge'],
+  Petitionen: ['Sammelübersicht zu Petitionen', 'Sammelübersichten zu Petitionen'],
+  'EU-Vorhaben': ['EU-Vorhaben', 'EU-Vorhaben'],
+  Unterrichtung: ['Unterrichtung', 'Unterrichtungen'],
+  Wahl: ['Wahl', 'Wahlen'],
+};
+
+// What the folded item says in one line.
+function teaser(item, entries, main) {
+  if (isBundle(item)) {
+    const counts = new Map();
+    for (const e of entries) {
+      const key = DOC_PLURAL[e.part.doc] ? e.part.doc : '';
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    const named = [...counts].filter(([k]) => k).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n} ${DOC_PLURAL[k][n === 1 ? 0 : 1]}`);
+    const rest = counts.get('') || 0;
+    if (rest) named.push(`${rest} ${named.length ? (rest === 1 ? 'weitere Vorlage' : 'weitere Vorlagen') : rest === 1 ? 'Vorlage' : 'Vorlagen'}`);
+    return named.length ? html`<span class="agenda-teaser">Ohne Debatte: ${and(named)}.</span>` : '';
   }
-  const list = (shown, cut) =>
-    html`<ul class="agenda-parts">${shown.map(
-      (p) => html`<li>${AGENDA_PART_LABEL[p.kind] ? html`<span class="pill">${AGENDA_PART_LABEL[p.kind]}</span> ` : ''}${cut ? truncate(p.text, PART_MAX) : p.text}</li>`,
-    )}</ul>`;
-  const short = html`${list(parts.slice(0, PARTS_SHOWN), true)}${parts.length > PARTS_SHOWN ? html`<p class="meta">und ${parts.length - PARTS_SHOWN} weitere</p>` : ''}`;
-  const shortened = parts.length > PARTS_SHOWN || parts.some((p) => p.text.length > PART_MAX);
-  return shortened ? clip(short, list(parts, false)) : short;
+  if (!main) return '';
+  const line = (main.s && main.s.kurz) || main.part.title || truncate(main.part.text.replace(/^[a-z]{1,2}\)\s*/, ''), 140);
+  const more = entries.length - 1;
+  return html`<span class="agenda-teaser">${line}</span>${
+    more > 0 ? html`<span class="agenda-more meta">Gemeinsam beraten mit ${more === 1 ? 'einer weiteren Vorlage' : `${more} weiteren Vorlagen`}</span>` : ''
+  }`;
 }
 
-// "Worum es geht": the summaries of the item's Drucksachen (src/summaries.js),
-// marked as written by an AI, with the original one click away.
-function found(item, summaries) {
-  return vorlagenOf(item)
-    .map((v) => ({ ...v, s: summaries.get(v.nummer) }))
-    .filter((v) => v.s && v.s.summary);
-}
+// After a first reading: the committees the bill goes to.
+const referral = (part) =>
+  part.referral ? html`<p class="agenda-referral"><strong>Geht zur Beratung an:</strong> ${part.referral}</p>` : '';
 
-const originalUrl = (item, v) => v.s.pdf_url || (item.drucksachen.find((d) => d.nummer === v.nummer) || {}).url || '';
-
-function credit(item, list) {
-  return html`KI-Zusammenfassung ${list.length > 1 ? 'der Drucksachen' : 'der Drucksache'} ${list.map((v, i) => {
-    const url = originalUrl(item, v);
-    return html`${i ? ', ' : ''}${url ? html`<a href="${url}" target="_blank" rel="noopener">${v.nummer} ↗</a>` : v.nummer}`;
-  })}`;
-}
-
-function about(item, summaries) {
-  const list = found(item, summaries);
-  if (!list.length) return '';
+// Inside: what it is about, at more length, marked as written by an AI.
+function about(item, main) {
+  if (!main || !main.s) return main ? referral(main.part) : '';
   return html`<div class="agenda-about">
-    <p class="agenda-about-title">Worum es geht</p>
-    ${list.map((v) => html`<p>${list.length > 1 && v.s.typ ? html`<span class="pill">${v.s.typ}</span> ` : ''}${v.s.summary}</p>`)}
-    <p class="meta">${credit(item, list)} · kann Fehler enthalten, maßgeblich ist das Original</p>
+    <p class="agenda-about-title">Worum es geht${gistMeta(main.part) ? html` <span class="meta">· ${gistMeta(main.part)}</span>` : ''}</p>
+    <p>${main.s.summary}</p>
+    <p class="meta">KI-Zusammenfassung der Drucksache ${drucksacheLink(item, main)} · kann Fehler enthalten, maßgeblich ist das Original</p>
+  </div>${referral(main.part)}`;
+}
+
+// What the committee made of it: its report, summarised. Only once the
+// committee is done – before the second and third reading.
+function committee(item, main) {
+  if (!main || !main.report || !main.report.s) return '';
+  const e = { nummer: main.report.nummer, s: main.report.s };
+  return html`<div class="agenda-about agenda-committee">
+    <p class="agenda-about-title">Aus dem Ausschuss</p>
+    <p>${e.s.summary}</p>
+    <p class="meta">KI-Zusammenfassung des Ausschussberichts ${drucksacheLink(item, e)} · <a href="${EXPLAINER_PATH}#gesetz">Was ein Ausschuss macht</a></p>
   </div>`;
 }
 
-function voteItem(item, date, summaries) {
-  return html`<li class="agenda-item">
-    ${when(item, date)}
-    <h3>${item.title}</h3>
-    <p class="agenda-kind">${pendingMark()}<span>${AGENDA_KIND_LABEL[item.kind]}${item.votes > 1 ? ` · ${plural(item.votes, 'Abstimmung', 'Abstimmungen')}` : ''}</span></p>
-    ${about(item, summaries)}
-    ${description(item, 320)}
-    ${statusPill(item)}
-    ${links(item, { search: item.kind !== 'abschliessend' })}
+// The other Drucksachen debated under the same item, one line each.
+function together(item, entries, main) {
+  const others = entries.filter((e) => e !== main);
+  if (!others.length) return '';
+  return html`<div class="agenda-together">
+    <p class="agenda-about-title">Gemeinsam beraten</p>
+    <p class="meta">Zu einem Thema berät der Bundestag oft mehrere Vorlagen zusammen – etwa einen Gesetzentwurf und Anträge anderer Fraktionen dazu. Über jede wird einzeln entschieden.</p>
+    <ul>${others.map(
+      (e) => html`<li>
+        ${AGENDA_PART_LABEL[e.part.kind] ? html`<span class="pill">${AGENDA_PART_LABEL[e.part.kind]}</span> ` : ''}<strong>${e.part.title || truncate(e.part.text.replace(/^[a-z]{1,2}\)\s*/, ''), 160)}</strong>${gistMeta(e.part) ? html` <span class="meta">${gistMeta(e.part)}</span>` : ''}
+        ${e.s && e.s.kurz ? html`<span class="agenda-together-kurz">${e.s.kurz} <span class="meta">(KI-Zusammenfassung, Drucksache ${drucksacheLink(item, e)})</span></span>` : ''}
+        ${e.report && e.report.s && e.report.s.kurz ? html`<span class="agenda-together-kurz"><strong>Ausschuss:</strong> ${e.report.s.kurz} <span class="meta">(KI-Zusammenfassung, Drucksache ${drucksacheLink(item, e.report)})</span></span>` : ''}
+        ${e.part.referral ? html`<span class="agenda-together-kurz meta">Geht zur Beratung an: ${e.part.referral}</span>` : ''}
+      </li>`,
+    )}</ul>
+  </div>`;
+}
+
+// Votes without debate: what each of them is, one line each – the petition
+// overviews, often a dozen, in one line together.
+function bundleList(entries) {
+  const petitions = entries.filter((e) => e.part.doc === 'Petitionen');
+  const lines = entries
+    .filter((e) => petitions.length < 2 || e.part.doc !== 'Petitionen')
+    .map((e) => html`<li><strong>${e.part.title || truncate(e.part.text.replace(/^[a-z]{1,2}\)\s*/, ''), 160)}</strong>${gistMeta(e.part) ? html` <span class="meta">${gistMeta(e.part)}</span>` : ''}</li>`);
+  if (petitions.length > 1) {
+    const numbers = petitions.map((e) => Number((e.part.title.match(/Sammelübersicht (\d+)/) || [])[1])).filter(Boolean).sort((a, b) => a - b);
+    const range = numbers.length === petitions.length ? ` (Nr. ${numbers[0]} bis ${numbers[numbers.length - 1]})` : '';
+    lines.push(html`<li><strong>${petitions.length} Sammelübersichten zu Petitionen${range}</strong> <span class="meta">Entscheidungen über Bitten und Beschwerden von Bürgerinnen und Bürgern, auf Empfehlung des Petitionsausschusses</span></li>`);
+  }
+  return html`<ul class="agenda-bundle">${lines}</ul>`;
+}
+
+// Each item is a fold (native <details>, works without JavaScript): closed,
+// the time, the title, what is decided and one line on what it is about;
+// open, the rest.
+function item(entry, date, summaries, { quiet = false } = {}) {
+  const entries = entriesOf(entry, summaries);
+  const main = isBundle(entry) ? null : mainOf(entries);
+  return html`<li class="agenda-item${quiet ? ' quiet' : ''}">
+    <details class="agenda-fold">
+      <summary>
+        ${when(entry, date)}
+        <h3>${entry.title}</h3>
+        <span class="fold-icon" aria-hidden="true"></span>
+        ${quiet ? '' : html`<span class="agenda-kind">${pendingMark()}<span>${AGENDA_KIND_LABEL[entry.kind]}${entry.votes > 1 ? ` · ${plural(entry.votes, 'Abstimmung', 'Abstimmungen')}` : ''}</span></span>`}
+        ${teaser(entry, entries, main)}
+        ${statusPill(entry)}
+      </summary>
+      <div class="agenda-body">
+        ${isBundle(entry) ? bundleList(entries) : html`${about(entry, main)}${committee(entry, main)}${together(entry, entries, main)}`}
+        ${statusDetail(entry)}
+        ${wording(entry)}
+        ${links(entry)}
+      </div>
+    </details>
   </li>`;
 }
 
-function possibleItem(item, date, summaries) {
-  return html`<li class="agenda-item quiet">
-    ${when(item, date)}
-    <h3>${item.title}</h3>
-    ${about(item, summaries)}
-    ${description(item, 220)}
-    ${statusPill(item)}
-    ${links(item)}
-  </li>`;
-}
-
-function restItem(item, date, summaries) {
-  const label = AGENDA_KIND_LABEL[item.kind];
-  const list = found(item, summaries);
+function restItem(entry, date, summaries) {
+  const label = AGENDA_KIND_LABEL[entry.kind];
+  const main = isBundle(entry) ? null : mainOf(entriesOf(entry, summaries));
   return html`<li>
-    ${when(item, date)}
-    <strong>${item.title}</strong>${label ? html` <span class="meta">– ${label}</span>` : ''}
-    ${item.status ? html` <span class="meta">(${item.status})</span>` : ''}
-    ${item.link ? html` <a class="meta" href="${item.link}" target="_blank" rel="noopener">Beim Bundestag ↗</a>` : ''}
-    ${list.length ? html`<p class="agenda-rest-about">${list.map((v) => html`${v.s.summary} `)}<span class="meta">(${credit(item, list)})</span></p>` : ''}
+    ${when(entry, date)}
+    <strong>${entry.title}</strong>${label ? html` <span class="meta">– ${label}</span>` : ''}
+    ${entry.status ? html` <span class="meta">(${entry.status})</span>` : ''}
+    ${entry.link ? html` <a class="meta" href="${entry.link}" target="_blank" rel="noopener">Beim Bundestag ↗</a>` : ''}
+    ${main && main.s && main.s.kurz ? html`<p class="agenda-rest-about">${main.s.kurz} <span class="meta">(KI-Zusammenfassung, Drucksache ${drucksacheLink(entry, main)})</span></p>` : ''}
+    ${main && main.part.referral ? html`<p class="agenda-rest-about meta">Geht zur Beratung an: ${main.part.referral}</p>` : ''}
   </li>`;
 }
 
@@ -160,12 +259,12 @@ function daySection(day, today, summaries) {
     <h2 class="agenda-date" id="tag-${date}-titel">${formatDateDe(date)}${date === today ? html` <span class="pill">Heute</span>` : ''}</h2>
     <p class="meta">${day.session ? `${day.session}. Sitzung · ` : ''}${plural(count, 'Tagesordnungspunkt', 'Tagesordnungspunkte')}${votes.length ? ` · ${plural(votes.length, 'Punkt', 'Punkte')} mit Abstimmung` : ''}</p>
     ${votes.length
-      ? html`<ol class="agenda-items">${votes.map((i) => voteItem(i, date, summaries))}</ol>`
+      ? html`<ol class="agenda-items">${votes.map((i) => item(i, date, summaries))}</ol>`
       : html`<p>Für diesen Tag ist keine Abstimmung angekündigt.</p>`}
     ${possible.length
       ? html`<h3 class="agenda-sub">Abstimmung möglich</h3>
         <p class="meta">Anträge ohne Ausschussbericht gehen meist erst in die Ausschüsse. Verlangt eine Fraktion die sofortige Abstimmung, wird schon an diesem Tag entschieden.</p>
-        <ol class="agenda-items">${possible.map((i) => possibleItem(i, date, summaries))}</ol>`
+        <ol class="agenda-items">${possible.map((i) => item(i, date, summaries, { quiet: true }))}</ol>`
       : ''}
     ${rest.length
       ? html`<details class="agenda-rest"><summary>Außerdem auf der Tagesordnung (${rest.length})</summary><ol class="agenda-list">${rest.map((i) => restItem(i, date, summaries))}</ol></details>`
@@ -177,7 +276,7 @@ export function previewPage(view, { days, today, fetchedAt, summaries = new Map(
   const body = html`<div class="narrow">
     <p class="eyebrow">Vorschau</p>
     <h1>Darüber stimmt der Bundestag ab</h1>
-    <p class="lede">Die Tagesordnung der kommenden Sitzungstage – vorn die Punkte, an deren Ende abgestimmt wird. Nach der Sitzung legen wir jeden Beschluss neben die Wahlprogramme.</p>
+    <p class="lede">Die Tagesordnung der kommenden Sitzungstage – vorn die Punkte, an deren Ende abgestimmt wird. Nach der Sitzung erklären wir jeden Beschluss und wie die Fraktionen abgestimmt haben.</p>
     <p class="meta">Was „erste Lesung“, „Beschlussempfehlung“ oder „Überweisung“ heißt und wann ein Gesetz wirklich gilt, steht unter <a href="${EXPLAINER_PATH}">So arbeitet der Bundestag</a>.</p>
     ${days.length > 1
       ? html`<nav class="theme-nav" aria-label="Sitzungstage">${days.map((d) => {
@@ -195,7 +294,7 @@ export function previewPage(view, { days, today, fetchedAt, summaries = new Map(
         </section>`}
     <aside class="panel disclaimer" id="so-lesen">
       <p><strong>Woran wir Abstimmungen erkennen.</strong> An der Sprache der Tagesordnung: Die zweite und dritte Beratung eines Gesetzentwurfs und die Beratung einer Beschlussempfehlung enden mit einer Abstimmung, ebenso Wahlen und die „abschließenden Beratungen ohne Aussprache“. Eine erste Beratung endet mit der Überweisung in die Ausschüsse. Die Tagesordnung kann sich bis zur Sitzung ändern, und die Zeiten sind geplant, nicht garantiert. <a href="${EXPLAINER_PATH}#gesetz">Wie ein Gesetz entsteht</a></p>
-      <p><strong>Worum es geht.</strong> Diese Zusammenfassungen schreibt eine KI (Claude von Anthropic) aus dem Anfang der jeweiligen Drucksache – bei Gesetzentwürfen ist das das Vorblatt mit Problem, Lösung und Kosten. Sie geben wieder, wie die Drucksache ihr Anliegen begründet, nicht unsere Einschätzung. Fehler sind möglich; maßgeblich ist das verlinkte Original.</p>
+      <p><strong>Worum es geht und Aus dem Ausschuss.</strong> Diese Zusammenfassungen schreibt eine KI (Claude von Anthropic) aus dem Anfang der jeweiligen Drucksache – bei Gesetzentwürfen ist das das Vorblatt mit Problem, Lösung und Kosten, bei Ausschussberichten die Empfehlung und der Bericht über die Beratungen. Sie geben wieder, wie die Drucksache ihr Anliegen begründet, nicht unsere Einschätzung. Fehler sind möglich; maßgeblich ist das verlinkte Original.</p>
       <p class="meta">Quelle: <a href="https://www.bundestag.de/tagesordnungen" target="_blank" rel="noopener">Tagesordnung des Deutschen Bundestags ↗</a>${fetchedAt ? `, zuletzt abgerufen ${formatDateTimeDe(fetchedAt)}` : ''}.</p>
     </aside>
   </div>`;

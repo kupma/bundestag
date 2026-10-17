@@ -205,4 +205,13 @@ create table drucksache_summaries (
 );
 `,
   },
+  {
+    id: 6,
+    sql: `
+-- One sentence for the folded agenda item next to the longer summary; rows
+-- written by an older prompt (version) are written again.
+alter table drucksache_summaries add column kurz text not null default '';
+alter table drucksache_summaries add column version int not null default 1;
+`,
+  },
 ];

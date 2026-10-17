@@ -157,6 +157,101 @@ const strongest = (kinds) => KIND_ORDER.find((k) => kinds.includes(k)) || 'sonst
 // what the links and the label already say.
 const PROCEDURAL = /^(?:Drucksachen?\b|Überweisungsvorschlag|Zu den Reden|Federführung|Mitberatung)/i;
 
+// What a part of an agenda item is, who brought it in, and its own title.
+// The agenda says it in a sentence of procedure first – "Beratung der
+// Beschlussempfehlung des Ausschusses für Tourismus (20. Ausschuss) / zu dem
+// Antrag der Fraktion BÜNDNIS 90/DIE GRÜNEN" – and the title follows on the
+// next line ("Natur erleben, Umwelt schützen"). A bill names itself inside the
+// procedure: "… eingebrachten Entwurfs eines Gesetzes zur …". Where none of
+// that is found, the fields stay empty and the page shows the agenda's text.
+const FRAME = /^(?:[a-z]{1,2}\)\s*)?(?:zu (?:dem|der|den)\b|Beratung\b|(?:Erste|Zweite|Dritte|Zweite und dritte) Beratung\b|Beschlussempfehlung und Bericht\b|Bericht\b|Wahlvorschlag\b)/i;
+
+const AUTHORS = [
+  [/BÜNDNIS 90\/DIE GRÜNEN|Bündnis 90\/Die Grünen/i, 'Grüne'],
+  [/\bDie Linke\b|\bDIE LINKE\b/, 'Linke'],
+  [/\bSPD\b/, 'SPD'],
+  [/\bCDU\/CSU\b/, 'CDU/CSU'],
+  [/\bAfD\b/, 'AfD'],
+  [/\bFDP\b/, 'FDP'],
+  [/\bBSW\b/, 'BSW'],
+];
+
+function authorOf(frame) {
+  if (/(?:von der|der|durch die) Bundesregierung\b/.test(frame)) return 'Bundesregierung';
+  if (/(?:vom|des|von dem) Bundesrat/.test(frame)) return 'Bundesrat';
+  const m = frame.match(/\bFraktion(?:en)?\b(.*)$/);
+  if (!m) return '';
+  return AUTHORS.map(([re, name]) => ({ name, at: m[1].search(re) }))
+    .filter((a) => a.at >= 0)
+    .sort((a, b) => a.at - b.at)
+    .map((a) => a.name)
+    .join(' und ');
+}
+
+export function gistOf(lines) {
+  const text = lines.filter((l) => !PROCEDURAL.test(l));
+  let i = 0;
+  while (i < text.length && FRAME.test(text[i])) i++;
+  const frameLines = text.slice(0, i);
+  const titleLines = [];
+  while (i < text.length && !FRAME.test(text[i])) titleLines.push(text[i++]);
+  const frame = frameLines.join(' ');
+  // an EU proposal's reference ("KOM(2025) 123 endg.; Ratsdok. …") is not part of its title
+  let title = titleLines.join(' ').replace(/\s+(?:KOM|COM)\s*\(\d{4}\).*$/, '').trim();
+  const bill = frameLines.map((l) => l.match(/\bEntwurfs? (eine[sr] .+)$/)).find(Boolean);
+  if (!title && bill) title = `Entwurf ${bill[1]}`;
+  const all = `${frame} ${title}`;
+  const doc = /Entschließungsantrag/i.test(frame)
+    ? 'Entschließungsantrag'
+    : /\bAntrag|\bAntrags\b|\bAnträge/i.test(frame)
+      ? 'Antrag'
+      : bill || /Gesetzentwurf/i.test(frame)
+        ? 'Gesetzentwurf'
+        : /Sammelübersicht|Petition/i.test(all)
+          ? 'Petitionen'
+          : /^Vorschlag für eine[nr]? (?:Verordnung|Richtlinie|Beschluss)/i.test(title)
+            ? 'EU-Vorhaben'
+            : /Unterrichtung/i.test(frame)
+              ? 'Unterrichtung'
+              : /\bWahl/i.test(all)
+                ? 'Wahl'
+                : '';
+  return { doc, by: doc === 'EU-Vorhaben' ? '' : authorOf(frame), title };
+}
+
+// Where a bill goes after its first reading: "Überweisungsvorschlag:
+// Verteidigungsausschuss (f), Auswärtiger Ausschuss", or each committee on a
+// line of its own. "(f)" marks the committee in charge ("federführend"); the
+// budget committee's note on § 96 of the rules of procedure is left out.
+export function referralOf(lines) {
+  const at = lines.findIndex((l) => /^Überweisungsvorschlag/i.test(l));
+  if (at < 0) return '';
+  const names = [lines[at].replace(/^Überweisungsvorschlag:?\s*/i, '')];
+  for (let i = at + 1; i < lines.length && /ausschuss/i.test(lines[i]) && !/^(?:[a-z]{1,2}\)|Drucksache|Beschlussempfehlung|Bericht)/i.test(lines[i]); i++) {
+    names.push(lines[i]);
+  }
+  return names
+    .map((n) => n.replace(/\s*(?:mitberatend und )?gemäß §\s*96 (?:der )?(?:GO|Geschäftsordnung)\b\.?/gi, '').replace(/\((?:f|federführend)\)/gi, '(federführend)').trim())
+    .filter(Boolean)
+    .join(', ');
+}
+
+// The committee's report ("Beschlussempfehlung und Bericht") on a bill or a
+// motion: for a bill the Drucksache named after "Beschlussempfehlung und
+// Bericht …"; for a motion the last of "Drucksachen <motion>, <report>".
+export function reportOf(lines) {
+  const at = lines.findIndex((l) => /^Beschlussempfehlung und Bericht\b/i.test(l));
+  if (at >= 0) {
+    const after = drucksachenIn(lines.slice(at + 1, at + 3));
+    if (after.length) return after[0].nummer;
+  }
+  if (/Beratung der Beschlussempfehlung/i.test(lines.join(' '))) {
+    const all = drucksachenIn(lines);
+    if (all.length >= 2) return all[all.length - 1].nummer;
+  }
+  return '';
+}
+
 // One agenda row as the page shows it. Items with several parts ("a) …
 // b) …") are split, because one part may be a first reading and the next a
 // final vote.
@@ -197,7 +292,14 @@ export function parseRow(row) {
     top: htmlLines(row && row.top).join(' '),
     title: title || (parts[0] ? parts[0][0] : ''),
     // each part with its own Drucksachen: the first is the bill or motion
-    parts: parts.map((p, i) => ({ text: p.filter((l) => !PROCEDURAL.test(l)).join(' '), kind: partKinds[i], drucksachen: drucksachenIn(p).map((d) => d.nummer) })),
+    parts: parts.map((p, i) => ({
+      text: p.filter((l) => !PROCEDURAL.test(l)).join(' '),
+      kind: partKinds[i],
+      drucksachen: drucksachenIn(p).map((d) => d.nummer),
+      ...gistOf(p),
+      referral: referralOf(p),
+      report: reportOf(p),
+    })),
     kind,
     vote: VOTE_KINDS.has(kind),
     votes: Math.max(voteParts, VOTE_KINDS.has(kind) ? 1 : 0),
