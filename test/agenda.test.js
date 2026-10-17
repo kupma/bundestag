@@ -222,7 +222,7 @@ test('the preview page, the home teaser, navigation and sitemap', async () => {
     assert.match(page.text, /Abstimmung möglich[\s\S]*Kostenloses Mittagessen/);
     assert.match(page.text, /Außerdem auf der Tagesordnung \(3\)/, 'opening and closing are left out');
     assert.match(page.text, /href="https:\/\/dserver\.bundestag\.de\/btd\/21\/012\/2101234\.pdf"/);
-    assert.match(page.text, /href="\/programme\?q=Wehrdienst"/);
+    assert.doesNotMatch(page.text, /href="\/programme/, 'no links into the old library');
     assert.match(page.text, /<link rel="canonical" href="http:\/\/localhost:3999\/vorschau">/);
 
     const home = await bw.get('/');

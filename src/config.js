@@ -54,9 +54,6 @@ export function loadConfig(env = process.env) {
     summaryModel: env.SUMMARY_MODEL || 'claude-haiku-5-5',
     summaryMaxPerRun: int(env.SUMMARY_MAX_PER_RUN, 30),
 
-    // Optional: semantic search on top of the German full-text search.
-    voyageApiKey: env.VOYAGE_API_KEY || '',
-    voyageModel: env.VOYAGE_MODEL || 'voyage-3.5',
 
     mail: {
       apiKey: (env.MAIL_API_KEY || '').trim(),
@@ -68,8 +65,6 @@ export function loadConfig(env = process.env) {
     adminEmails: list(env.ADMIN_EMAILS),
 
     scheduler: env.SCHEDULER !== 'off',
-    // Download the election programmes of the Bundestag parties by itself.
-    defaultLibrary: env.DEFAULT_LIBRARY !== 'off',
     cronSecret: env.CRON_SECRET || '',
     lookbackDays: int(env.DIP_LOOKBACK_DAYS, 10),
     settleHours: int(env.ARTICLE_SETTLE_HOURS, 12),

@@ -1,41 +1,21 @@
-// The site's shape language: two circles. The left one is what was promised,
-// the right one what was decided. How they overlap is the verdict, so the
-// meaning never depends on colour (which would be political) and survives
-// greyscale, colour blindness and dark mode alike.
+// The site's marks. The logo is the plenary hall seen from above: three
+// rows of seats around the lectern. Marks never carry meaning by colour
+// (which would be political); they hold in greyscale, colour blindness and
+// dark mode alike.
 
-import { escapeHtml, raw } from '../html.js';
+import { raw } from '../html.js';
 
-// Three clearly different distances: almost one circle, half overlapping,
-// visibly apart. The difference has to survive 20 pixels on a phone.
-const R = 8.5;
-const POSITIONS = {
-  entspricht: [18, 22],
-  teilweise: [15, 25],
-  widerspricht: [9.5, 30.5],
-  // an empty, dashed promise next to the decision: nothing was promised
-  nicht_thematisiert: [9.5, 30.5],
-};
+// Three arcs, the rows of seats; open at the bottom, where the lectern is.
+const HALL = '<path d="M5 23a15 15 0 0 1 30 0"/><path d="M10.5 23a9.5 9.5 0 0 1 19 0"/><path d="M16 23a4 4 0 0 1 8 0"/>';
 
-export function venn(alignment, { size = '', label = '' } = {}) {
-  const [a, b] = POSITIONS[alignment] || POSITIONS.nicht_thematisiert;
-  const missing = alignment === 'nicht_thematisiert' || !POSITIONS[alignment];
-  const aria = label ? `role="img" aria-label="${escapeHtml(label)}"` : 'aria-hidden="true"';
-  return raw(
-    `<svg class="venn venn-${missing ? 'nicht_thematisiert' : alignment}${size ? ` venn-${size}` : ''}" viewBox="0 0 40 22" ${aria}>` +
-      `<circle cx="${a}" cy="11" r="${R}"${missing ? ' class="promise-missing"' : ''}/>` +
-      `<circle cx="${b}" cy="11" r="${R}"/></svg>`,
-  );
-}
+export const logoMark = () => raw(`<svg class="logo-mark" viewBox="0 0 40 26" aria-hidden="true">${HALL}</svg>`);
 
-// The preview's mark: the right circle, what is decided, is still open.
+// The same, large, for empty pages.
+export const hallMark = () => raw(`<svg class="hall-mark" viewBox="0 0 40 26" aria-hidden="true">${HALL}</svg>`);
+
+// A decision still to be taken: an empty, dashed circle.
 export const pendingMark = ({ size = '' } = {}) =>
-  raw(
-    `<svg class="venn venn-pending${size ? ` venn-${size}` : ''}" viewBox="0 0 40 22" aria-hidden="true">` +
-      `<circle cx="15" cy="11" r="${R}"/><circle cx="25" cy="11" r="${R}" class="decision-open"/></svg>`,
-  );
-
-export const logoMark = () =>
-  raw('<svg class="logo-mark" viewBox="0 0 40 26" aria-hidden="true"><circle cx="14" cy="13" r="11"/><circle cx="26" cy="13" r="11"/></svg>');
+  raw(`<svg class="pending-mark${size ? ` pending-${size}` : ''}" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="8.5"/></svg>`);
 
 const THEME_ICONS = {
   // a calm horizon

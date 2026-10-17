@@ -2,14 +2,13 @@
   "name": "bundestag",
   "version": "1.0.0",
   "private": true,
-  "description": "Vergleicht die Beschlüsse des Bundestags mit den Wahlprogrammen der Parteien – ein Artikel pro Sitzungstag, mit Kommentaren und Newsletter.",
+  "description": "Erklärt die Beschlüsse des Bundestags verständlich – ein Artikel pro Sitzungstag, eine Vorschau auf die nächsten Abstimmungen, mit Kommentaren und Newsletter.",
   "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch --env-file=.env server.js",
     "test": "node --test test/*.test.js",
-    "ingest": "node scripts/ingest.js",
     "dip:probe": "node scripts/dip-probe.js",
     "agenda:probe": "node scripts/agenda-probe.js",
     "generate": "node scripts/generate.js"
@@ -19,11 +18,9 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
-    "pg": "^8.23.0",
-    "unpdf": "^1.8.1"
+    "pg": "^8.23.0"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.5.8",
-    "pdf-lib": "^1.17.1"
+    "@electric-sql/pglite": "^0.5.8"
   }
 }

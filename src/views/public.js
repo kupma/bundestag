@@ -1,13 +1,13 @@
 import { escapeHtml, html, paragraphs, raw } from '../html.js';
 import { THEMES } from '../mitmachen.js';
-import { bySeat, KINDS, partyClass } from '../programs.js';
+import { fraktionOf, partyClass } from '../plenum.js';
 import { isExternal, LEVELS, RESOURCES, shownActions } from '../resources.js';
 import { formatDateDe, formatDateTimeDe, truncate } from '../text.js';
 import { agendaTeaser } from './agenda.js';
 import { decisionContext, decisionTags, EXPLAINER_PATH } from './explainer.js';
-import { ALIGNMENT_LABEL, ALIGNMENT_SHORT, cls, PLENUM, RESULT_LABEL, shortParty, VOTE_LABEL } from './labels.js';
-import { DEFAULT_DESCRIPTION, layout, notices, organization, TAGLINE } from './layout.js';
-import { themeIcon, venn } from './shapes.js';
+import { cls, PLENUM, RESULT_LABEL, VOTE_LABEL, VOTE_ORDER } from './labels.js';
+import { DEFAULT_DESCRIPTION, layout, notices, organization, shareImage, TAGLINE } from './layout.js';
+import { hallMark, themeIcon } from './shapes.js';
 
 const plural = (n, one, many) => `${n} ${Number(n) === 1 ? one : many}`;
 
@@ -19,33 +19,20 @@ function resourceLink(key) {
     : html`<a href="${r.url}">${r.label} →</a>`;
 }
 
-function verdictCounts(decisions) {
-  const counts = { entspricht: 0, teilweise: 0, widerspricht: 0, nicht_thematisiert: 0 };
-  for (const d of decisions || []) for (const p of d.parties || []) if (p.alignment in counts) counts[p.alignment]++;
-  return counts;
-}
-
-export function legend() {
-  return html`<p class="legend" aria-label="Legende">
-    ${['entspricht', 'teilweise', 'widerspricht', 'nicht_thematisiert'].map((a) => html`<span>${venn(a)} ${ALIGNMENT_SHORT[a]}</span>`)}
-  </p>`;
-}
-
 // --- home ----------------------------------------------------------------------------
 
 function feature(a) {
   const decisions = (a.body && a.body.decisions) || [];
-  const counts = verdictCounts(decisions);
   return html`<article class="card feature">
     <p class="eyebrow">Neuester Sitzungstag · ${formatDateDe(a.sitting_date)}</p>
     <h2><a href="/artikel/${a.slug}">${a.title}</a></h2>
     <p class="lede">${a.lede}</p>
     ${decisions.length
-      ? html`<p class="glance-mini">${Object.entries(counts)
-          .filter(([, n]) => n)
-          .map(([k, n]) => html`<span>${venn(k)} ${n}× ${ALIGNMENT_SHORT[k]}</span>`)}</p>`
+      ? html`<ul class="feature-decisions">${decisions.slice(0, 4).map(
+          (d) => html`<li><span class="result result-${cls(d.result)}">${RESULT_LABEL[d.result] || d.result}</span> ${d.headline}</li>`,
+        )}</ul>`
       : ''}
-    <p class="meta">${plural(decisions.length, 'Beschluss', 'Beschlüsse')} im Abgleich · ${plural(a.comment_count || 0, 'Kommentar', 'Kommentare')} · <a href="/artikel/${a.slug}">Weiterlesen</a></p>
+    <p class="meta">${plural(decisions.length, 'Beschluss', 'Beschlüsse')} erklärt · ${plural(a.comment_count || 0, 'Kommentar', 'Kommentare')} · <a href="/artikel/${a.slug}">Weiterlesen</a></p>
   </article>`;
 }
 
@@ -66,11 +53,10 @@ export function themeCards() {
   )}</div>`;
 }
 
-function preparingNote({ preparing = [], lastSyncAt = null, programCount }) {
+function preparingNote({ preparing = [], lastSyncAt = null }) {
   if (preparing.length) {
     return html`<p class="notice"><span><strong>In Vorbereitung:</strong> ${preparing.map((d, i) => html`${i ? ' · ' : ''}Sitzung vom ${formatDateDe(d)}`)}. Der Artikel erscheint automatisch, sobald die Beschlüsse vollständig dokumentiert sind.</span></p>`;
   }
-  if (!programCount) return html`<p class="meta">Die Wahlprogramme werden gerade in die Bibliothek geladen.</p>`;
   return lastSyncAt ? html`<p class="meta">Zuletzt beim Bundestag nachgesehen: ${formatDateTimeDe(lastSyncAt)}.</p>` : '';
 }
 
@@ -79,10 +65,10 @@ function preparingNote({ preparing = [], lastSyncAt = null, programCount }) {
 // place. static/landing.js draws the hall; without it the steps are plain
 // text on paper, and nothing is lost.
 const FAQ = [
-  ['Was ist das hier?', (n) => `${n} vergleicht nach jedem Sitzungstag die Beschlüsse des Deutschen Bundestags mit den Wahlprogrammen der Parteien und dem Koalitionsvertrag. Für jeden Beschluss steht dort, was die Parteien versprochen haben, wie ihre Fraktionen abgestimmt haben und ob das zusammenpasst – mit wörtlichen Zitaten und Seitenangabe.`],
-  ['Woher kommen die Daten?', () => 'Die Beschlüsse stammen aus der offiziellen Parlamentsdokumentation DIP des Bundestags, das Abstimmungsverhalten aus dem Plenarprotokoll. Die Wahlprogramme laden wir direkt von den Websites der Parteien.'],
-  ['Wer entscheidet, ob ein Beschluss zum Programm passt?', () => 'Eine KI (Claude von Anthropic) ordnet ein – aber nur auf Grundlage der gelieferten Dokumente, und jedes Zitat wird vor der Veröffentlichung automatisch Zeichen für Zeichen mit dem Programmtext abgeglichen. Einordnungen ohne überprüfbare Fundstelle werden zurückgezogen. Jede Fundstelle ist verlinkt, damit du selbst nachlesen kannst.'],
-  ['Ist die Seite parteiisch?', () => 'Nein. Wir empfehlen keine Partei, alle Programme werden gleich behandelt, und die Parteien stehen in der Sitzordnung des Bundestags. Die Gestaltung verzichtet bewusst auf Farben, die eine Partei für sich beansprucht.'],
+  ['Was ist das hier?', (n) => `${n} erklärt nach jedem Sitzungstag, was der Deutsche Bundestag beschlossen hat: was die Beschlüsse bedeuten, wie die Fraktionen abgestimmt haben und wie es weitergeht. Die Vorschau zeigt, worüber als Nächstes abgestimmt wird.`],
+  ['Woher kommen die Daten?', () => 'Die Beschlüsse und Drucksachen stammen aus der offiziellen Parlamentsdokumentation DIP des Bundestags, das Abstimmungsverhalten aus dem Plenarprotokoll, die Vorschau aus der Tagesordnung des Bundestags. Jede Quelle ist verlinkt.'],
+  ['Wer schreibt die Texte?', () => 'Eine KI (Claude von Anthropic) – aber nur auf Grundlage der gelieferten Dokumente des Bundestags. Sie soll sachlich und ohne Wertung erklären und nichts hinzufügen, was nicht in den Quellen steht. Fehler sind trotzdem möglich; deshalb ist jede Quelle verlinkt.'],
+  ['Ist die Seite parteiisch?', () => 'Nein. Wir empfehlen keine Partei und bewerten keinen Beschluss. Die Fraktionen stehen überall in der Sitzordnung des Bundestags, und die Gestaltung verzichtet bewusst auf Farben, die eine Partei für sich beansprucht.'],
   ['Wann erscheint ein neuer Artikel?', () => 'Am Morgen nach jedem Sitzungstag. Trägt der Bundestag später weitere Beschlüsse oder das Plenarprotokoll nach, wird der Artikel aktualisiert.'],
   ['Gilt ein Gesetz, sobald der Bundestag es beschlossen hat?', () => 'Noch nicht. Nach dem Beschluss im Bundestag ist der Bundesrat dran, dann unterschreibt der Bundespräsident, und das Gesetz wird im Bundesgesetzblatt verkündet. Erst dann tritt es in Kraft – an dem Tag, den es selbst nennt. Und ein angenommener Antrag ist gar kein Gesetz, sondern eine Forderung oder Stellungnahme des Bundestags. Mehr dazu auf der Seite „So arbeitet der Bundestag“.'],
   ['Kann ich sehen, worüber als Nächstes abgestimmt wird?', () => 'Ja, in der Vorschau. Dort steht die Tagesordnung der kommenden Sitzungstage, und die Punkte, an deren Ende abgestimmt wird, stehen vorn – Gesetze, Beschlussempfehlungen und Wahlen. Grundlage ist die offizielle Tagesordnung des Bundestags.'],
@@ -104,7 +90,7 @@ function plenumFallback() {
   return raw(`<svg class="plenum-fallback" viewBox="0 0 400 215" aria-hidden="true">${arcs}<circle cx="200" cy="205" r="7"/></svg>`);
 }
 
-export function homePage(view, { latest, articles, programCount, preparing = [], lastSyncAt = null, upcoming = [] }) {
+export function homePage(view, { latest, articles, preparing = [], lastSyncAt = null, upcoming = [] }) {
   const { config } = view;
   const rest = latest ? articles.filter((a) => a.id !== latest.id) : articles;
   const latestLink = latest ? `/artikel/${latest.slug}` : '/archiv';
@@ -119,7 +105,7 @@ export function homePage(view, { latest, articles, programCount, preparing = [],
         <div class="step-card">
           <p class="eyebrow">Der Bundestag, Sitzungstag für Sitzungstag</p>
           <h1><span class="brand-word">${config.siteName}</span> <span class="claim">${TAGLINE}</span></h1>
-          <p class="lede">Nach jeder Sitzung legen wir die Beschlüsse des Bundestags ruhig neben die Wahlprogramme der Parteien – mit wörtlichen Zitaten, Fundstellen und dem Abstimmungsverhalten. Überparteilich und ohne Aufregung.</p>
+          <p class="lede">Nach jeder Sitzung erklären wir in einfachen Worten, was der Bundestag beschlossen hat, wie die Fraktionen abgestimmt haben und was das bedeutet. Überparteilich und ohne Aufregung.</p>
           <p class="hero-actions">
             ${latest ? html`<a class="button" href="${latestLink}">Neuester Sitzungstag: ${formatDateDe(latest.sitting_date, { weekday: false })}</a>` : ''}
             <a class="button ghost" href="#schritt-1">So funktioniert’s ↓</a>
@@ -137,8 +123,8 @@ export function homePage(view, { latest, articles, programCount, preparing = [],
       <section class="step" data-step="2">
         <div class="step-card">
           <p class="step-no">2</p>
-          <h2>Vor der Wahl: versprochen</h2>
-          <p>Jede Partei hat aufgeschrieben, was sie vorhat – oft auf mehr als hundert Seiten. Dazu kommt der Koalitionsvertrag. Alle liegen Seite für Seite in unserer öffentlichen <a href="/programme">Bibliothek</a>, durchsuchbar für alle.</p>
+          <h2>Vorher: auf der Tagesordnung</h2>
+          <p>Was der Bundestag entscheidet, steht vorher auf seiner Tagesordnung – meist in schwer lesbarer Amtssprache. Unsere <a href="/vorschau">Vorschau</a> sagt in wenigen Sätzen, worum es bei den großen Punkten geht und was die Ausschüsse daraus gemacht haben.</p>
         </div>
       </section>
       <section class="step" data-step="3">
@@ -152,10 +138,8 @@ export function homePage(view, { latest, articles, programCount, preparing = [],
       <section class="step" data-step="4">
         <div class="step-card">
           <p class="step-no">4</p>
-          <h2>Beides nebeneinander</h2>
-          <p>Am Morgen danach legen wir jeden Beschluss neben jedes Programm. Zwei Kreise zeigen das Ergebnis – links versprochen, rechts beschlossen:</p>
-          ${legend()}
-          <p>Jedes Zitat wird vor der Veröffentlichung Zeichen für Zeichen mit dem Programm abgeglichen und ist bis auf die PDF-Seite verlinkt.</p>
+          <h2>Am Morgen danach: erklärt</h2>
+          <p>Für jeden Sitzungstag schreiben wir auf, was beschlossen wurde, wie jede Fraktion abgestimmt hat und was das heißt – zum Beispiel, ob ein Gesetz damit schon gilt. Jede Quelle ist verlinkt.</p>
         </div>
       </section>
       <section class="step step-final" data-step="5">
@@ -174,11 +158,11 @@ export function homePage(view, { latest, articles, programCount, preparing = [],
 
   <div class="wrap landing-after">
   ${latest
-    ? html`${feature(latest)}${preparing.length ? preparingNote({ preparing, lastSyncAt, programCount }) : ''}`
-    : html`<section class="empty">${venn('teilweise', { size: 'lg' })}
+    ? html`${feature(latest)}${preparing.length ? preparingNote({ preparing, lastSyncAt }) : ''}`
+    : html`<section class="empty">${hallMark()}
       <h2>Noch kein Sitzungstag</h2>
       <p>Die Parlamentsdokumentation trägt die Beschlüsse meist ein bis zwei Tage nach einer Sitzung ein. Sobald sie da sind, erscheint hier automatisch der Artikel.</p>
-      ${preparingNote({ preparing, lastSyncAt, programCount })}
+      ${preparingNote({ preparing, lastSyncAt })}
     </section>`}
   ${agendaTeaser(upcoming)}
   ${rest.length
@@ -212,11 +196,6 @@ export function homePage(view, { latest, articles, programCount, preparing = [],
             url: `${config.baseUrl}/`,
             inLanguage: 'de-DE',
             publisher: { '@id': `${config.baseUrl}/#organisation` },
-            potentialAction: {
-              '@type': 'SearchAction',
-              target: { '@type': 'EntryPoint', urlTemplate: `${config.baseUrl}/programme?q={search_term_string}` },
-              'query-input': 'required name=search_term_string',
-            },
           },
           {
             '@type': 'FAQPage',
@@ -236,13 +215,13 @@ export function archivePage(view, { articles }) {
     byMonth.get(month).push(a);
   }
   const body = html`<div class="narrow"><h1>Alle Sitzungstage</h1>
-  <p class="lede">Jeder Sitzungstag des Bundestags seit Start dieser Seite: die Beschlüsse, das Abstimmungsverhalten der Fraktionen und der Abgleich mit den Wahlprogrammen.</p>
+  <p class="lede">Jeder Sitzungstag des Bundestags seit Start dieser Seite: die Beschlüsse, was sie bedeuten und wie die Fraktionen abgestimmt haben.</p>
   ${articles.length
     ? [...byMonth.entries()].map(([month, list]) => html`<h2 class="section-title">${month}</h2>${list.map(listItem)}`)
     : html`<p>Noch keine Artikel.</p>`}</div>`;
   return layout(view, {
     title: 'Alle Sitzungstage des Bundestags',
-    description: 'Archiv aller Sitzungstage: Beschlüsse des Bundestags, Abstimmungsverhalten der Fraktionen und der Abgleich mit den Wahlprogrammen – Tag für Tag.',
+    description: 'Archiv aller Sitzungstage: Beschlüsse des Bundestags verständlich erklärt, mit dem Abstimmungsverhalten der Fraktionen – Tag für Tag.',
     body,
     canonical: '/archiv',
   });
@@ -250,53 +229,46 @@ export function archivePage(view, { articles }) {
 
 // --- article -------------------------------------------------------------------------
 
-function glance(decisions, programs) {
-  if (!decisions.length || !programs.length) return '';
-  return html`<section class="card glance" aria-labelledby="glance-title">
-    <h2 id="glance-title">Auf einen Blick</h2>
-    <table>
-      <thead><tr><th scope="col">Beschluss</th>${programs.map(
-        (p) => html`<th scope="col" class="${partyClass(p.party)}" title="${p.party} – ${KINDS[p.kind] || ''}"><span class="dot" aria-hidden="true"></span>${shortParty(p.party, p.kind)}</th>`,
-      )}</tr></thead>
-      <tbody>${decisions.map(
-        (d, i) => html`<tr>
-          <td><a href="#beschluss-${i + 1}">${d.headline}</a> <span class="result result-${cls(d.result)}">${RESULT_LABEL[d.result] || d.result}</span></td>
-          ${programs.map((prog) => {
-            const p = d.parties.find((x) => x.programId === prog.id);
-            const a = p ? p.alignment : 'nicht_thematisiert';
-            return html`<td>${venn(a, { label: `${prog.party}: ${ALIGNMENT_LABEL[a]}` })}</td>`;
-          })}
-        </tr>`,
-      )}</tbody>
-    </table>
-    ${legend()}
-  </section>`;
+// How each group voted. Articles written before the programme comparison
+// was dropped kept a vote per programme; those map back onto the groups.
+export function votesOf(d) {
+  if (Array.isArray(d.votes)) return d.votes;
+  const out = PLENUM.map((p) => ({ fraktion: p.short, vote: 'unbekannt' }));
+  for (const p of d.parties || []) {
+    const slot = out.find((v) => v.fraktion === fraktionOf(p.party));
+    if (slot && VOTE_LABEL[p.vote]) slot.vote = p.vote;
+  }
+  return out;
 }
 
-function partyRow(p) {
-  const vote = VOTE_LABEL[p.vote];
-  return html`<li class="party-row align-${cls(p.alignment)} ${partyClass(p.party)}">
-    ${venn(p.alignment, { label: ALIGNMENT_LABEL[p.alignment] })}
-    <div>
-      <div class="party-head">
-        <span class="party-name"><span class="dot" aria-hidden="true"></span>${p.party}</span>
-        <span class="party-kind">${KINDS[p.kind] || ''}</span>
-        <span class="verdict">${ALIGNMENT_LABEL[p.alignment] || p.alignment}</span>
-        ${vote ? html`<span class="vote">${vote}</span>` : ''}
-      </div>
-      <p class="party-row-text">${p.assessment}</p>
-      ${p.citations.length
-        ? html`<ul class="citations">${p.citations.map(
-            (c) => html`<li>
-              ${c.quote ? html`<blockquote>„${c.quote}“</blockquote>` : ''}
-              <span class="cite-links"><a href="/stelle/${c.chunkId}">${KINDS[p.kind] || 'Dokument'} ${p.party}, PDF-Seite ${c.page}</a>${
-                c.url ? html` · <a href="${c.url}" target="_blank" rel="noopener">Original ↗</a>` : ''
-              }</span>
-            </li>`,
-          )}</ul>`
-        : ''}
-    </div>
-  </li>`;
+const knownVotes = (votes) => votes.some((v) => v.vote !== 'unbekannt');
+
+// Closed, a decision says in one line who voted how: "Ja: SPD, CDU/CSU ·
+// Nein: AfD · Enthaltung: Linke, Grüne".
+function votesLine(votes) {
+  const groups = VOTE_ORDER.filter((v) => v !== 'unbekannt')
+    .map((v) => [v, votes.filter((x) => x.vote === v)])
+    .filter(([, list]) => list.length);
+  if (!groups.length) return '';
+  return html`<span class="decision-votes">${groups.map(([v, list]) => html`<span><strong>${VOTE_LABEL[v]}:</strong> ${list.map((x) => x.fraktion).join(', ')}</span>`)}</span>`;
+}
+
+// Open, each group in seat order with its vote – told apart by shape, not
+// colour: yes filled, no outlined, abstention dashed.
+function votesBox(votes, note) {
+  return html`<section class="votes" aria-label="Abstimmung">
+    <h3>Abstimmung</h3>
+    ${knownVotes(votes)
+      ? html`<ul class="vote-list">${votes.map(
+          (v) => html`<li class="${partyClass(v.fraktion)}"><span class="dot" aria-hidden="true"></span><span class="vote-fraktion">${v.fraktion}</span> <span class="vote-pill vote-${cls(v.vote)}">${VOTE_LABEL[v.vote] || v.vote}</span></li>`,
+        )}</ul>`
+      : ''}
+    ${note
+      ? html`<p class="meta">${note}</p>`
+      : knownVotes(votes)
+        ? ''
+        : html`<p class="meta">Wie die Fraktionen abgestimmt haben, steht im Plenarprotokoll. Liegt es vor, tragen wir es hier nach.</p>`}
+  </section>`;
 }
 
 function todo(stored) {
@@ -310,10 +282,11 @@ function todo(stored) {
   </section>`;
 }
 
-// Each decision is a fold: closed, it is one line with the result and a
-// verdict per party; open, the whole comparison. Native <details>, so it
-// works without JavaScript; static/article.js opens the one a link points to.
+// Each decision is a fold: closed, it is one line with the result and who
+// voted how; open, what it means. Native <details>, so it works without
+// JavaScript; static/article.js opens the one a link points to.
 function decisionSection(d, i, date) {
+  const votes = votesOf(d);
   return html`<details class="decision" id="beschluss-${i + 1}">
     <summary>
       <h2>${d.headline}</h2>
@@ -322,17 +295,13 @@ function decisionSection(d, i, date) {
         <span class="result result-${cls(d.result)}">${RESULT_LABEL[d.result] || d.result}</span>
         ${decisionTags(d).map((t) => html`<span>${t}</span>`)}
       </span>
-      <span class="decision-verdicts">${d.parties.map(
-        (p) => html`<span class="${partyClass(p.party)}">${venn(p.alignment, { label: `${p.party}: ${ALIGNMENT_LABEL[p.alignment] || p.alignment}` })}<span class="decision-party">${shortParty(p.party, p.kind)}</span></span>`,
-      )}</span>
+      ${votesLine(votes)}
     </summary>
     <div class="decision-body">
       <p class="official-title">${d.title}</p>
       <p>${d.summary}</p>
       ${decisionContext(d, date)}
-      ${d.votesNote ? html`<p class="votes"><strong>Abstimmung</strong><span>${d.votesNote}</span></p>` : ''}
-      <h3>Was in den Programmen steht</h3>
-      <ul class="compare">${d.parties.map(partyRow)}</ul>
+      ${votesBox(votes, d.votesNote)}
       ${todo(d.actions)}
       ${d.sources.length ? html`<p class="sources">Quellen: ${d.sources.map((s, j) => html`${j ? ' · ' : ''}<a href="${s.url}" target="_blank" rel="noopener">${s.label}</a>`)}</p>` : ''}
     </div>
@@ -376,28 +345,23 @@ function commentsSection(view, { article, comments, commentError, commentDraft }
 export function articlePage(view, data) {
   const { article } = data;
   const b = article.body || {};
-  // Stored articles keep the order they were written in; show them in seat
-  // order whatever that was.
-  const decisions = (b.decisions || []).map((d) => ({ ...d, parties: [...(d.parties || [])].sort(bySeat) }));
-  const programs = [...(b.programs || [])].sort(bySeat);
+  const decisions = b.decisions || [];
+  // An article from before the programme comparison was dropped: its
+  // introduction talked about the programmes, so it waits for the rewrite.
+  const intro = (b.version || 1) >= 2 ? b.intro || [] : [];
   const body = html`<article>
     <header class="article-head">
       <p class="eyebrow">Sitzung des Bundestags vom ${formatDateDe(article.sitting_date)}</p>
       <h1>${article.title}</h1>
       <p class="lede">${article.lede}</p>
-      <p class="meta">${plural(decisions.length, 'Beschluss', 'Beschlüsse')} im Abgleich mit ${plural(programs.length, 'Programm', 'Programmen')}${
+      <p class="meta">${plural(decisions.length, 'Beschluss', 'Beschlüsse')}${
         new Date(article.created_at) - new Date(article.published_at) > 30 * 60 * 1000 ? html` · aktualisiert ${formatDateTimeDe(article.created_at)}` : ''
       } · <a href="#kommentare">${plural(data.comments.length, 'Kommentar', 'Kommentare')}</a> · <a href="/ueber#methode">So entsteht dieser Artikel</a></p>
     </header>
     ${article.status === 'hidden' ? html`<div class="notice error"><div>Dieser Artikel ist ausgeblendet und nur für Admins sichtbar.</div></div>` : ''}
     <div class="article-body">
-      <div class="intro">${(b.intro || []).map((p) => html`<p>${p}</p>`)}</div>
-      ${b.commonGround
-        ? html`<aside class="panel common-ground">${venn('entspricht')}<div><h2>Gemeinsamkeiten</h2><p>${b.commonGround}</p></div></aside>`
-        : ''}
-    </div>
-    ${glance(decisions, programs)}
-    <div class="article-body">
+      <div class="intro">${intro.map((p) => html`<p>${p}</p>`)}</div>
+      ${b.commonGround ? html`<aside class="panel common-ground"><h2>Gemeinsamkeiten</h2><p>${b.commonGround}</p></aside>` : ''}
       ${decisions.length
         ? html`<div class="decisions-head"><h2 class="section-title">Die Beschlüsse im Einzelnen</h2><button type="button" class="link fold-all" hidden>Alle aufklappen</button></div>`
         : ''}
@@ -408,7 +372,7 @@ export function articlePage(view, data) {
           )}</ul></section>`
         : ''}
       <aside class="panel disclaimer">
-        <p><strong>So entsteht dieser Artikel.</strong> Die Beschlüsse stammen aus der Parlamentsdokumentation (DIP) des Bundestags, das Abstimmungsverhalten aus dem Plenarprotokoll. Die Einordnung schreibt eine KI (Claude von Anthropic) nur auf Grundlage dieser Dokumente und der verlinkten Programmstellen. Jedes Zitat wird vor der Veröffentlichung automatisch mit dem Programmtext abgeglichen; Einordnungen ohne überprüfbare Fundstelle werden zurückgezogen. Fehler sind trotzdem möglich – deshalb ist jede Fundstelle verlinkt. <a href="/ueber#methode">Mehr zur Methode</a> · <a href="${EXPLAINER_PATH}">So arbeitet der Bundestag</a></p>
+        <p><strong>So entsteht dieser Artikel.</strong> Die Beschlüsse und Drucksachen stammen aus der Parlamentsdokumentation (DIP) des Bundestags, das Abstimmungsverhalten aus dem Plenarprotokoll. Die Texte schreibt eine KI (Claude von Anthropic) nur auf Grundlage dieser Dokumente, sachlich und ohne Wertung. Fehler sind trotzdem möglich – deshalb ist jede Quelle verlinkt. <a href="/ueber#methode">Mehr zur Methode</a> · <a href="${EXPLAINER_PATH}">So arbeitet der Bundestag</a></p>
       </aside>
     </div>
   </article>
@@ -442,9 +406,9 @@ export function articlePage(view, data) {
             inLanguage: 'de-DE',
             mainEntityOfPage: url,
             url,
-            image: [`${config.baseUrl}/static/og.png`],
+            image: [shareImage(config)],
             articleSection: 'Bundestag',
-            keywords: ['Bundestag', 'Wahlprogramm', 'Abstimmung', ...decisions.map((d) => d.headline)].join(', '),
+            keywords: ['Bundestag', 'Beschluss', 'Abstimmung', ...decisions.map((d) => d.headline)].join(', '),
             about: decisions.map((d) => ({ '@type': 'Thing', name: d.title })),
             author: { '@id': `${config.baseUrl}/#organisation` },
             publisher: { '@id': `${config.baseUrl}/#organisation` },
@@ -499,37 +463,26 @@ export function mitmachenPage(view) {
 
 // --- about, legal, errors --------------------------------------------------------------
 
-export function aboutPage(view, { programs }) {
+export function aboutPage(view) {
   const body = html`<article class="prose">
   <h1>Über uns</h1>
-  <p class="lede">Vor der Wahl schreiben Parteien auf, was sie vorhaben. Danach entscheidet der Bundestag. ${view.config.siteName} legt beides ruhig nebeneinander – und zeigt, was jede und jeder selbst beitragen kann.</p>
+  <p class="lede">Der Bundestag entscheidet jede Sitzungswoche über Dutzende Vorlagen – in einer Sprache, die kaum jemand liest. ${view.config.siteName} erklärt ruhig und verständlich, was beschlossen wurde, wie die Fraktionen abgestimmt haben und was das bedeutet. Und es zeigt, was jede und jeder selbst beitragen kann.</p>
   <h2>Überparteilich</h2>
-  <p>Wir empfehlen keine Partei und bewerten keine. Alle Programme werden gleich behandelt und so sortiert, wie die Fraktionen im Plenarsaal sitzen – von links nach rechts aus Sicht des Präsidiums, der Koalitionsvertrag zuletzt. Die Seite selbst verwendet keine Farbe, die eine Partei für sich beansprucht: Parteifarben erscheinen nur als kleiner Punkt zur Orientierung, für alle gleich groß.</p>
-  <h2>Die zwei Kreise</h2>
-  <p>Der linke Kreis steht für das, was versprochen wurde, der rechte für das, was beschlossen wurde. Wie sie sich überlagern, ist die Einordnung:</p>
-  ${legend()}
-  <p>Die Einordnung sagt, wie ein Beschluss zu einem Programm steht – nicht, ob er gut oder schlecht ist. Das darfst du selbst entscheiden.</p>
+  <p>Wir empfehlen keine Partei und bewerten keinen Beschluss – ob er gut oder schlecht ist, entscheidest du selbst. Die Fraktionen stehen überall so, wie sie im Plenarsaal sitzen: von links nach rechts aus Sicht des Präsidiums. Die Seite verwendet keine Farbe, die eine Partei für sich beansprucht; Parteifarben erscheinen nur als kleiner Punkt zur Orientierung, für alle gleich groß. Ob eine Fraktion mit Ja oder Nein gestimmt hat, zeigt die Form, nicht die Farbe: Ja ist gefüllt, Nein umrandet, Enthaltung gestrichelt.</p>
   <h2 id="methode">Methode</h2>
   <ol>
     <li><strong>Beschlüsse:</strong> Wir lesen die Parlamentsdokumentation <a href="https://dip.bundestag.de">DIP</a> des Bundestags aus. Als Beschluss zählt jede Abstimmung im Plenum über eine Vorlage – Überweisungen an Ausschüsse zählen nicht. Gesetze und namentliche Abstimmungen kommen zuerst; Petitionen und Wahlen stehen am Ende unter „Weitere Beschlüsse“.</li>
-    <li><strong>Abstimmungsverhalten:</strong> Wie die Fraktionen gestimmt haben, steht im Plenarprotokoll. Wir suchen dort die Abstimmungsformel zum jeweiligen Beschluss („mit den Stimmen der … gegen die Stimmen der …“). Liegt das Protokoll noch nicht vor, steht „Abstimmung unbekannt“.</li>
-    <li><strong>Bibliothek:</strong> Die Wahlprogramme liegen als PDF vor. Wir zerlegen sie in kurze Passagen, von denen jede genau eine Seite hat, und machen sie durchsuchbar. Die <a href="/programme">Bibliothek</a> ist öffentlich.</li>
-    <li><strong>Einordnung:</strong> Eine KI (Claude von Anthropic) vergleicht jeden Beschluss mit den passendsten Passagen jedes Programms. Sie darf nur die gelieferten Dokumente verwenden und muss wörtlich zitieren.</li>
-    <li><strong>Prüfung:</strong> Bevor ein Artikel erscheint, prüft ein Programm jedes Zitat Zeichen für Zeichen gegen den Programmtext. Nicht auffindbare Zitate werden gestrichen; eine Einordnung ohne belegbare Fundstelle wird zurückgezogen.</li>
-    <li><strong>Vorschau:</strong> Die <a href="/vorschau">Vorschau</a> liest die offizielle Tagesordnung des Bundestags. Ob an einem Punkt abgestimmt wird, steht in ihrer Sprache: Zweite und dritte Beratung eines Gesetzentwurfs und die Beratung einer Beschlussempfehlung enden mit einer Abstimmung, eine erste Beratung mit der Überweisung in die Ausschüsse. Anträge ohne Ausschussbericht werden meist überwiesen und stehen deshalb unter „Abstimmung möglich“. Unter „Worum es geht“ fasst eine kleinere KI (Claude Haiku) die Drucksache dahinter in wenigen Sätzen zusammen – aus ihrem Anfang, bei Gesetzentwürfen dem Vorblatt mit Problem, Lösung und Kosten. Die Zusammenfassung gibt wieder, wie die Drucksache ihr Anliegen begründet; das Original ist verlinkt.</li>
+    <li><strong>Abstimmungsverhalten:</strong> Wie die Fraktionen gestimmt haben, steht im Plenarprotokoll. Wir suchen dort die Abstimmungsformel zum jeweiligen Beschluss („mit den Stimmen der … gegen die Stimmen der …“). Liegt das Protokoll noch nicht vor, steht dort „unbekannt“, und der Artikel wird nachgetragen, sobald es da ist.</li>
+    <li><strong>Erklärung:</strong> Eine KI (Claude von Anthropic) schreibt aus diesen Dokumenten – der Vorlage, dem Bericht des Ausschusses und dem Protokoll –, was beschlossen wurde und was es bedeutet. Sie darf nur die gelieferten Dokumente verwenden, soll ohne Wertung schreiben und nichts hinzufügen. Was ein Ergebnis im Verfahren bedeutet („Was heißt das?“), ist dagegen fest von uns geschrieben, nicht von der KI.</li>
+    <li><strong>Vorschau:</strong> Die <a href="/vorschau">Vorschau</a> liest die offizielle Tagesordnung des Bundestags. Ob an einem Punkt abgestimmt wird, steht in ihrer Sprache: Zweite und dritte Beratung eines Gesetzentwurfs und die Beratung einer Beschlussempfehlung enden mit einer Abstimmung, eine erste Beratung mit der Überweisung in die Ausschüsse. Anträge ohne Ausschussbericht werden meist überwiesen und stehen deshalb unter „Abstimmung möglich“. Unter „Worum es geht“ und „Aus dem Ausschuss“ fasst eine kleinere KI (Claude Haiku) die Drucksachen dahinter in wenigen Sätzen zusammen – bei Gesetzentwürfen aus dem Vorblatt mit Problem, Lösung und Kosten, beim Ausschuss aus seinem Bericht. Die Zusammenfassungen geben wieder, wie die Drucksache ihr Anliegen begründet; das Original ist verlinkt.</li>
     <li><strong>Was du tun kannst:</strong> Wo es zu einem Beschluss etwas Konkretes zu tun gibt, schlagen wir bis zu zwei Schritte vor – meist für dich selbst, seltener mit anderen oder in der Politik. Sie sollen unabhängig davon hilfreich sein, wie du zu dem Beschluss stehst. Allgemeine Tipps wie „frag deine Abgeordneten“ wiederholen wir nicht unter jedem Beschluss; sie stehen unter <a href="/mitmachen">Mitmachen</a>. Links führen nur zu einer festen, von uns geprüften Liste von Angeboten.</li>
   </ol>
-  <p>Seitenangaben beziehen sich auf die Seite im PDF, nicht auf die gedruckte Seitenzahl.</p>
   <h2>Grenzen</h2>
-  <p>Eine KI kann sich irren, eine Suche kann die passende Stelle übersehen, und Programme sind oft allgemeiner formuliert als Gesetze. „Nicht thematisiert“ heißt: In den gefundenen Passagen steht nichts dazu – nicht, dass die Partei keine Meinung hat. Wenn dir ein Fehler auffällt, schreib es gern in die Diskussion.</p>
-  <h2>In der Bibliothek</h2>
-  ${programs.length
-    ? html`<ul>${programs.map((p) => html`<li><a href="/programme/${p.slug}">${p.party}: ${p.title}</a></li>`)}</ul>`
-    : html`<p>Noch keine Dokumente.</p>`}
+  <p>Eine KI kann sich irren, und Amtsdokumente lassen sich nicht immer in drei Sätzen fassen. Maßgeblich sind die verlinkten Originale. Wenn dir ein Fehler auffällt, schreib es gern in die Diskussion unter dem Artikel.</p>
   </article>`;
   return layout(view, {
     title: 'Über uns und Methode',
-    description: 'Wie wir Beschlüsse des Bundestags mit Wahlprogrammen abgleichen: Datenquellen, KI-Einordnung, Zitatprüfung und Grenzen der Methode.',
+    description: 'Wie wir die Beschlüsse des Bundestags erklären: Datenquellen, Abstimmungsverhalten, KI-Texte und ihre Grenzen.',
     body,
     canonical: '/ueber',
   });
@@ -573,7 +526,7 @@ export function privacyPage(view) {
   <ul>
     <li><strong>Hosting und Datenbank:</strong> Railway Corporation (USA).</li>
     <li><strong>E-Mail-Versand:</strong> Resend (USA) – erhält deine E-Mail-Adresse zum Versand.</li>
-    <li><strong>KI-Analyse:</strong> Anthropic (USA) – erhält ausschließlich öffentliche Dokumente (Bundestagsdokumente, Wahlprogramme), keine Nutzerdaten.</li>
+    <li><strong>KI-Texte:</strong> Anthropic (USA) – erhält ausschließlich öffentliche Dokumente des Bundestags, keine Nutzerdaten.</li>
   </ul>
   <h2>Deine Rechte</h2>
   <p>Du hast das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung, Datenübertragbarkeit und Widerspruch sowie auf Beschwerde bei einer Aufsichtsbehörde. Dein Konto samt Kommentaren kannst du jederzeit selbst unter <a href="/konto">Konto</a> löschen.</p>
@@ -583,7 +536,7 @@ export function privacyPage(view) {
 
 export function errorPage(view, status, message) {
   const titles = { 400: 'Das hat nicht geklappt', 403: 'Nicht erlaubt', 404: 'Seite nicht gefunden', 413: 'Zu groß', 429: 'Kurz durchatmen', 500: 'Da ist etwas schiefgegangen' };
-  const body = html`<section class="empty">${venn('widerspricht', { size: 'lg' })}<h1>${titles[status] || 'Fehler'}</h1><p>${message || 'Diese Seite gibt es nicht.'}</p><p><a class="button ghost" href="/">Zur Startseite</a></p></section>`;
+  const body = html`<section class="empty">${hallMark()}<h1>${titles[status] || 'Fehler'}</h1><p>${message || 'Diese Seite gibt es nicht.'}</p><p><a class="button ghost" href="/">Zur Startseite</a></p></section>`;
   return layout(view, { title: titles[status] || 'Fehler', body, noindex: true });
 }
 
@@ -594,5 +547,5 @@ export function rssFeed(config, articles) {
       (a) => `<item><title>${x(a.title)}</title><link>${x(`${config.baseUrl}/artikel/${a.slug}`)}</link><guid>${x(`${config.baseUrl}/artikel/${a.slug}`)}</guid><pubDate>${new Date(a.published_at).toUTCString()}</pubDate><description>${x(a.lede)}</description></item>`,
     )
     .join('');
-  return `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>${x(config.siteName)}</title><link>${x(config.baseUrl)}</link><description>Was der Bundestag beschließt – und was die Parteien versprochen haben.</description><language>de</language>${items}</channel></rss>`;
+  return `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>${x(config.siteName)}</title><link>${x(config.baseUrl)}</link><description>Was der Bundestag beschließt – verständlich erklärt.</description><language>de</language>${items}</channel></rss>`;
 }

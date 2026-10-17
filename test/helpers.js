@@ -1,17 +1,14 @@
-// Shared test fixtures: an in-memory Postgres (PGlite), fake outside services,
-// and PDFs generated on the fly. Nothing here touches the network.
+// Shared test fixtures: an in-memory Postgres (PGlite) and fake outside
+// services. Nothing here touches the network.
 
 import http from 'node:http';
-import { PDFDocument, StandardFonts } from 'pdf-lib';
 
 import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { migrate, openDatabase } from '../src/db.js';
 
 export function makeConfig(overrides = {}) {
-  // The standard library downloads from the parties' websites; tests that want
-  // it switch it back on with their own sources and a fake fetch.
-  const config = loadConfig({ PGLITE_DIR: 'memory://', BASE_URL: 'http://localhost:3999', SCHEDULER: 'off', DEFAULT_LIBRARY: 'off' });
+  const config = loadConfig({ PGLITE_DIR: 'memory://', BASE_URL: 'http://localhost:3999', SCHEDULER: 'off' });
   return { ...config, ...overrides };
 }
 
@@ -31,20 +28,6 @@ export function fakeMailer() {
       return { ok: true, id: `mail-${sent.length}` };
     },
   };
-}
-
-export async function makePdf(pages) {
-  const pdf = await PDFDocument.create();
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
-  for (const lines of pages) {
-    const page = pdf.addPage([595, 842]);
-    let y = 800;
-    for (const line of [].concat(lines)) {
-      page.drawText(line, { x: 50, y, size: 11, font });
-      y -= 16;
-    }
-  }
-  return Buffer.from(await pdf.save());
 }
 
 // DIP /vorgangsposition documents as the API returns them (abridged).
@@ -166,10 +149,11 @@ export function fakeDip({ positions = samplePositions(), protocol = SAMPLE_PROTO
   };
 }
 
-// Answers the three kinds of structured request the article pipeline makes,
-// the way a well-behaved model would – plus exactly the misbehaviour the checks
-// exist for: a quote that is not in its passage, and a verdict that cites a
-// passage it was never shown.
+// Answers the three kinds of structured request the pipelines make (a
+// Drucksache summary, a decision's analysis, the day's frame) the way a
+// well-behaved model would – plus exactly the misbehaviour the checks exist
+// for: a vote that is no vote, a group left out, suggestions that are too
+// general or point nowhere.
 export function fakeClaude() {
   const calls = [];
   return {
@@ -186,25 +170,14 @@ export function fakeClaude() {
           usage,
         };
       }
-      if (schema.required.includes('items')) {
-        const ids = [...prompt.matchAll(/<beschluss id="(\d+)">/g)].map((m) => Number(m[1]));
-        return { data: { items: ids.map((id) => ({ decision_id: id, queries: ['Mietpreisbremse', 'Mieten', 'Mittagessen Schule', 'Schulessen'] })) }, usage };
-      }
-      if (schema.required.includes('parties')) {
-        const programs = [...prompt.matchAll(/<programm id="(\d+)"[^>]*>([\s\S]*?)<\/programm>/g)].map((m) => ({
-          id: Number(m[1]),
-          passages: [...m[2].matchAll(/<passage id="(\d+)" seite="\d+">\n([\s\S]*?)\n<\/passage>/g)].map((p) => ({ id: Number(p[1]), text: p[2] })),
-        }));
-        const parties = programs.map((p, i) => {
-          const first = p.passages[0];
-          if (i === 0 && first) {
-            return { program_id: p.id, vote: 'dafür', alignment: 'entspricht', assessment: 'Das Programm fordert genau das.', citations: [{ passage_id: first.id, quote: first.text.slice(0, 40) }] };
-          }
-          if (i === 1 && first) {
-            return { program_id: p.id, vote: 'dagegen', alignment: 'widerspricht', assessment: 'Das Programm will etwas anderes.', citations: [{ passage_id: first.id, quote: 'Dieses Zitat steht nirgends im Programm.' }] };
-          }
-          return { program_id: p.id, vote: 'enthalten', alignment: 'entspricht', assessment: 'Behauptung ohne Beleg.', citations: [{ passage_id: 999999, quote: 'erfunden' }] };
-        });
+      if (schema.required.includes('votes')) {
+        // Linke missing, Grüne with a vote that is none: both end up unknown.
+        const votes = [
+          { fraktion: 'SPD', vote: 'dafür' },
+          { fraktion: 'CDU/CSU', vote: 'dafür' },
+          { fraktion: 'AfD', vote: 'dagegen' },
+          { fraktion: 'Grüne', vote: 'unsinn' },
+        ];
         // Five suggestions, one general (ask your MP), one with an unknown
         // level and one with an unknown link: the checks drop the general one
         // and the level, unlink the link, and keep two.
@@ -216,12 +189,12 @@ export function fakeClaude() {
           { level: 'gemeinsam', text: 'Ein vierter Vorschlag ist einer zu viel.', resource: 'keine' },
         ];
         return {
-          data: { headline: 'Mietpreisbremse verlängert', summary: 'Der Bundestag hat entschieden.', result: 'angenommen', votes_note: 'CDU/CSU und SPD dafür, AfD dagegen.', actions, parties },
+          data: { headline: 'Mietpreisbremse verlängert', summary: 'Der Bundestag hat entschieden.', result: 'angenommen', votes_note: 'CDU/CSU und SPD dafür, AfD dagegen.', votes, actions },
           usage,
         };
       }
       return {
-        data: { title: 'Mietpreisbremse bleibt – wie versprochen?', lede: 'Ein Tag im Bundestag.', intro: ['Absatz eins.', 'Absatz zwei.'], common_ground: 'Beim Mieterschutz stimmte eine breite Mehrheit zu.' },
+        data: { title: 'Mietpreisbremse bleibt bis 2029', lede: 'Ein Tag im Bundestag.', intro: ['Absatz eins.', 'Absatz zwei.'], common_ground: 'Beim Mieterschutz stimmte eine breite Mehrheit zu.' },
         usage,
       };
     },

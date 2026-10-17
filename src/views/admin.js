@@ -1,7 +1,6 @@
 import { html } from '../html.js';
-import { KINDS } from '../programs.js';
 import { formatDateDe, formatDateTimeDe, truncate } from '../text.js';
-import { ASSET_VERSION, layout, notices } from './layout.js';
+import { layout, notices } from './layout.js';
 
 const yes = (ok, label) => html`<span class="chip ${ok ? 'ok' : 'warn'}">${ok ? '✓' : '✗'} ${label}</span>`;
 
@@ -18,11 +17,10 @@ export function adminPage(view, d) {
       ${yes(d.status.claude, `Claude (${config.claudeModel})`)}
       ${yes(d.status.summaries, `Vorschau-Zusammenfassungen (${config.summaryModel})`)}
       ${yes(d.status.mail, 'E-Mail-Versand')}
-      ${yes(d.status.voyage, 'Semantische Suche (optional)')}
       ${yes(d.status.database === 'postgres', d.status.database === 'postgres' ? 'Postgres' : 'PGlite (nur lokal!)')}
       ${yes(d.status.scheduler, 'Zeitplan')}
     </p>
-    <p>${d.counts.users} Konten · ${d.counts.subscribers} Newsletter-Abos (bestätigt) · ${d.counts.articles} Artikel · ${d.counts.comments} Kommentare · ${d.counts.chunks} Passagen in ${d.programs.length} Dokumenten</p>
+    <p>${d.counts.users} Konten · ${d.counts.subscribers} Newsletter-Abos (bestätigt) · ${d.counts.articles} Artikel · ${d.counts.comments} Kommentare</p>
     <p class="meta">Vorschau: ${d.counts.summaries} Drucksachen zusammengefasst, zusammen ${d.counts.summary_input.toLocaleString('de-DE')} Token rein und ${d.counts.summary_output.toLocaleString('de-DE')} raus.</p>
   </section>
 
@@ -53,53 +51,6 @@ export function adminPage(view, d) {
           (x) => html`<tr><td>${formatDateDe(x.sitting_date)}</td><td>${x.n}</td><td>${x.in_depth}</td><td>${x.slug ? html`<a href="/artikel/${x.slug}">ansehen</a>` : '–'}</td></tr>`,
         )}</tbody></table>`
       : html`<p class="meta">Noch keine Beschlüsse abgerufen.</p>`}
-  </section>
-
-  <section class="admin-block">
-    <h2>Bibliothek</h2>
-    <h3>Standard-Bibliothek</h3>
-    <p class="meta">Die Wahlprogramme aller Bundestagsparteien und der Koalitionsvertrag werden automatisch von den offiziellen Seiten geladen und geprüft – beim ersten Durchlauf nach dem Start und danach für alles, was noch fehlt.${config.defaultLibrary ? '' : ' (Zurzeit abgeschaltet: DEFAULT_LIBRARY=off.)'}</p>
-    <table><thead><tr><th>Partei</th><th>Dokument</th><th>Status</th><th>Quelle</th></tr></thead><tbody>${d.standard.map(
-      (s) => html`<tr>
-        <td>${s.party}</td>
-        <td>${s.program && s.program.status === 'ready' ? html`<a href="/programme/${s.program.slug}">${s.title}</a>` : s.title}</td>
-        <td>${!s.program
-          ? html`<span class="chip warn">noch nicht geladen</span>`
-          : s.program.status === 'ready'
-            ? html`<span class="chip ok">bereit, ${s.program.page_count} Seiten</span>`
-            : s.program.status === 'error'
-              ? html`<span class="chip warn">Fehler</span> <span class="meta">${truncate(s.program.error || '', 140)}</span>`
-              : html`<span class="chip">wird verarbeitet</span>`}</td>
-        <td>${s.program && s.program.source_url ? html`<a href="${s.program.source_url}" target="_blank" rel="noopener">PDF ↗</a>` : ''}</td>
-      </tr>`,
-    )}</tbody></table>
-    <form method="post" action="/admin/programme/standard"><button type="submit" class="secondary">Fehlende jetzt laden</button></form>
-    <h3>Weiteres Dokument hinzufügen</h3>
-    <p class="meta">Wahlprogramme als PDF, am besten direkt von der Website der Partei. Die Quelladresse wird für die Links „Original-PDF, Seite …“ gebraucht – auch beim Hochladen bitte angeben.</p>
-    <div class="admin-actions">
-      <form method="post" action="/admin/programme" class="stack" id="program-form">
-        <label for="party">Partei</label><input id="party" name="party" required placeholder="z. B. SPD" maxlength="60">
-        <label for="title">Titel</label><input id="title" name="title" required placeholder="z. B. Regierungsprogramm 2025" maxlength="200">
-        <label for="kind">Art</label>
-        <select id="kind" name="kind">${Object.entries(KINDS).map(([k, v]) => html`<option value="${k}">${v}</option>`)}</select>
-        <label for="election">Wahl</label><input id="election" name="election" placeholder="z. B. Bundestagswahl 2025" maxlength="80">
-        <label for="source_url">Adresse des PDFs</label><input id="source_url" name="source_url" type="url" placeholder="https://…/programm.pdf">
-        <label for="file">… oder PDF hochladen <span class="meta">(dann wird die Adresse nur für die Links verwendet)</span></label>
-        <input id="file" type="file" accept="application/pdf">
-        <button type="submit">Importieren</button>
-        <p class="meta" id="upload-status" role="status"></p>
-      </form>
-    </div>
-    ${d.programs.length
-      ? html`<table><thead><tr><th>Partei</th><th>Titel</th><th>Art</th><th>Status</th><th>Seiten</th><th>Passagen</th><th></th></tr></thead><tbody>${d.programs.map(
-          (p) => html`<tr>
-            <td>${p.party}</td><td><a href="/programme/${p.slug}">${p.title}</a></td><td>${KINDS[p.kind]}</td>
-            <td>${p.status === 'ready' ? html`<span class="chip ok">bereit</span>` : p.status === 'error' ? html`<span class="chip warn" title="${p.error || ''}">Fehler</span> <span class="meta">${truncate(p.error || '', 120)}</span>` : html`<span class="chip">wird verarbeitet</span>`}</td>
-            <td>${p.page_count}</td><td>${p.chunk_count}${p.embedding_model ? html` <span class="meta">(+ ${p.embedding_model})</span>` : ''}</td>
-            <td><form method="post" action="/admin/programme/${p.id}/loeschen" class="inline confirm" data-confirm="${p.party}: ${p.title} wirklich löschen? Zitate in bestehenden Artikeln verlieren ihren Link auf die Passage."><button class="link danger" type="submit">löschen</button></form></td>
-          </tr>`,
-        )}</tbody></table>`
-      : html`<p class="meta">Noch leer.</p>`}
   </section>
 
   <section class="admin-block">
@@ -139,8 +90,7 @@ export function adminPage(view, d) {
           (j) => html`<tr class="${j.ok === false ? 'failed' : ''}"><td>${formatDateTimeDe(j.started_at)}</td><td>${j.kind}</td><td><pre>${j.ok == null ? 'läuft …\n' : ''}${j.summary}</pre></td></tr>`,
         )}</tbody></table>`
       : html`<p class="meta">Noch nichts gelaufen.</p>`}
-  </section>
-  <script src="/static/admin.js?v=${ASSET_VERSION.adminJs}" defer></script>`;
+  </section>`;
   return layout(view, { title: 'Admin', body, noindex: true });
 }
 

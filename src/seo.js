@@ -14,7 +14,6 @@ export const STATIC_PAGES = [
   { path: '/vorschau', changefreq: 'daily', priority: '0.7' },
   { path: '/bundestag-erklaert', changefreq: 'monthly', priority: '0.6' },
   { path: '/mitmachen', changefreq: 'monthly', priority: '0.6' },
-  { path: '/programme', changefreq: 'monthly', priority: '0.6' },
   { path: '/ueber', changefreq: 'monthly', priority: '0.5' },
 ];
 
@@ -32,12 +31,11 @@ export function robotsTxt(config) {
   ].join('\n');
 }
 
-export function sitemapXml(config, { articles, programs }) {
+export function sitemapXml(config, { articles }) {
   const newest = articles.length ? iso(articles[0].updated_at || articles[0].published_at) : '';
   const urls = [
     ...STATIC_PAGES.map((p) => ({ ...p, lastmod: p.path === '/' || p.path === '/archiv' ? newest : '' })),
     ...articles.map((a) => ({ path: `/artikel/${a.slug}`, lastmod: iso(a.updated_at || a.published_at), changefreq: 'weekly', priority: '0.9' })),
-    ...programs.map((p) => ({ path: `/programme/${p.slug}`, lastmod: p.created_at ? iso(p.created_at) : '', changefreq: 'yearly', priority: '0.4' })),
   ];
   const body = urls
     .map(
@@ -64,7 +62,7 @@ export function manifest(config) {
   return JSON.stringify({
     name: config.siteName,
     short_name: config.siteName,
-    description: 'Was der Bundestag beschließt – abgeglichen mit den Wahlprogrammen der Parteien.',
+    description: 'Was der Bundestag beschließt – verständlich erklärt.',
     lang: 'de',
     start_url: '/',
     display: 'standalone',

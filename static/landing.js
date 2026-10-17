@@ -330,31 +330,6 @@
       .sort((a, b) => b.d - a.d);
     for (const { b } of byDepth) drawBox(b);
 
-    // "versprochen" and "beschlossen" (step 4): the two circles, over the hall
-    const circles = reduced.matches ? 0 : band(s, 0.64, 0.74) * (1 - band(s, 0.84, 0.92));
-    if (circles > 0.01) {
-      const spread = mix(3.4, 1.3, band(s, 0.66, 0.8));
-      for (const [x, label] of [
-        [-spread, 'versprochen'],
-        [spread, 'beschlossen'],
-      ]) {
-        const p = project([x, 8.5, 12]);
-        if (!p) continue;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 3 * p.s, 0, Math.PI * 2);
-        ctx.fillStyle = rgba(C.surface, 0.35 * circles);
-        ctx.fill();
-        ctx.lineWidth = 2 * dpr;
-        ctx.strokeStyle = rgba(C.ink, 0.85 * circles);
-        ctx.stroke();
-        ctx.fillStyle = rgba(C.ink2, circles);
-        ctx.font = `600 ${Math.round(clamp(0.5 * p.s, 11 * dpr, 17 * dpr))}px Figtree, system-ui, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(label, p.x + Math.sign(x) * 1.2 * p.s, p.y);
-      }
-    }
-
     // names of the groups, and where the lectern is
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';

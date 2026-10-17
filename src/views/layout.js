@@ -7,7 +7,8 @@ import { html, raw } from '../html.js';
 import { logoMark } from './shapes.js';
 
 // Cache-busting: the stylesheet is cached for an hour, so its URL carries a
-// hash of its content and a deploy with new styles is picked up at once.
+// hash of its content and a deploy with new styles is picked up at once. The
+// share image too: social networks keep a picture as long as its URL.
 const STATIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'static');
 const version = (file) => {
   try {
@@ -16,20 +17,21 @@ const version = (file) => {
     return 'dev';
   }
 };
-export const ASSET_VERSION = { css: version('styles.css'), adminJs: version('admin.js'), landingJs: version('landing.js'), articleJs: version('article.js') };
+export const ASSET_VERSION = { css: version('styles.css'), landingJs: version('landing.js'), articleJs: version('article.js'), og: version('og.png') };
+
+export const shareImage = (config) => `${config.baseUrl}/static/og.png?v=${ASSET_VERSION.og}`;
 
 const NAV = [
   ['/archiv', 'Sitzungstage'],
   ['/vorschau', 'Vorschau'],
   ['/bundestag-erklaert', 'Grundlagen'],
   ['/mitmachen', 'Mitmachen'],
-  ['/programme', 'Bibliothek'],
   ['/ueber', 'Über uns'],
 ];
 
-export const TAGLINE = 'Was versprochen war. Was beschlossen wurde.';
+export const TAGLINE = 'Was der Bundestag beschließt. Verständlich erklärt.';
 export const DEFAULT_DESCRIPTION =
-  'Nach jedem Sitzungstag des Bundestags: alle Beschlüsse im Abgleich mit den Wahlprogrammen von Linken, Grünen, SPD, CDU/CSU und AfD – mit wörtlichen Zitaten, Fundstellen und Abstimmungsverhalten. Überparteilich und ruhig.';
+  'Nach jedem Sitzungstag des Bundestags: alle Beschlüsse in einfachen Worten, mit dem Abstimmungsverhalten von Linken, Grünen, SPD, CDU/CSU und AfD – dazu eine Vorschau auf die nächsten Abstimmungen. Überparteilich und ruhig.';
 
 // Structured data for search engines, as JSON that cannot close its tag.
 const jsonLd = (data) => raw(`<script type="application/ld+json">${JSON.stringify(data).replace(/</g, '\\u003c')}</script>`);
@@ -55,7 +57,7 @@ export function layout(
   // never make a second one.
   const canonicalPath = canonical ?? (noindex ? '' : current);
   const pageUrl = canonicalPath ? `${config.baseUrl}${canonicalPath}` : '';
-  const img = image || `${config.baseUrl}/static/og.png`;
+  const img = image || shareImage(config);
   const active = (href) => (href === '/archiv' ? current.startsWith('/artikel') || current.startsWith('/archiv') : current.startsWith(href));
   const { seo, plausible } = config;
 
@@ -77,7 +79,7 @@ ${pageUrl ? html`<meta property="og:url" content="${pageUrl}">` : ''}
 <meta property="og:image" content="${img}">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="${config.siteName}: zwei Kreise – versprochen und beschlossen">
+<meta property="og:image:alt" content="${config.siteName}: ${TAGLINE}">
 ${published ? html`<meta property="article:published_time" content="${published}">` : ''}
 ${modified ? html`<meta property="article:modified_time" content="${modified}">` : ''}
 <meta name="twitter:card" content="summary_large_image">
@@ -117,8 +119,8 @@ ${body}
 <footer class="site-footer">
   <div class="wrap footer-inner">
     <div>
-      <p><strong>${config.siteName}</strong> – was der Bundestag beschließt, was die Parteien versprochen haben, und was jede und jeder selbst beitragen kann. Überparteilich und ohne Aufregung.</p>
-      <p class="meta">Daten: <a href="https://dip.bundestag.de">DIP des Deutschen Bundestags</a> und die Wahlprogramme der Parteien. Einordnung mit KI, jede Fundstelle verlinkt.</p>
+      <p><strong>${config.siteName}</strong> – was der Bundestag beschließt, verständlich erklärt, und was jede und jeder selbst beitragen kann. Überparteilich und ohne Aufregung.</p>
+      <p class="meta">Daten: <a href="https://dip.bundestag.de">DIP des Deutschen Bundestags</a> und die Tagesordnung des Bundestags. Texte mit KI, jede Quelle verlinkt.</p>
     </div>
     <nav class="footer-links" aria-label="Weitere Seiten">
       <a href="/archiv">Archiv</a><a href="/bundestag-erklaert">Grundlagen</a><a href="/ueber#methode">Methode</a><a href="/mitmachen">Mitmachen</a><a href="/feed.xml">RSS</a><a href="/impressum">Impressum</a><a href="/datenschutz">Datenschutz</a>

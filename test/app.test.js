@@ -3,8 +3,7 @@ import { after, before, describe, test } from 'node:test';
 
 import { generateArticle } from '../src/articles.js';
 import { syncDecisions } from '../src/dip.js';
-import { createProgram, ingestProgramPdf } from '../src/programs.js';
-import { browser, fakeClaude, fakeDip, fakeMailer, makeConfig, makeDb, makePdf, samplePositions, startApp } from './helpers.js';
+import { browser, fakeClaude, fakeDip, fakeMailer, makeConfig, makeDb, samplePositions, startApp } from './helpers.js';
 
 const linkFrom = (letter, path) => {
   const m = letter.text.match(new RegExp(`https?://[^\\s]+${path}\\?token=([^\\s]+)`));
@@ -15,21 +14,12 @@ const linkFrom = (letter, path) => {
 describe('the website', () => {
   let ctx;
   let app;
-  let programId;
 
   before(async () => {
     const db = await makeDb();
     // DIP also knows an older sitting day, outside every window the tests sync.
     const dip = fakeDip({ positions: [...samplePositions('2026-09-24'), ...samplePositions('2026-09-10')] });
-    ctx = { db, config: makeConfig({ adminEmails: ['admin@example.de'] }), claude: fakeClaude(), dip, embedder: null, mailer: fakeMailer(), fetch };
-    for (const [party, text] of [
-      ['SPD', 'Wir werden die Mietpreisbremse verlängern und Mieterinnen und Mieter schützen.'],
-      ['CDU/CSU', 'Mieten: Wir setzen auf Neubau. Die Mietpreisbremse lassen wir auslaufen.'],
-    ]) {
-      const p = await createProgram(db, { party, title: 'Wahlprogramm 2025', kind: 'wahlprogramm', election: 'Bundestagswahl 2025', sourceUrl: 'https://example.org/p.pdf' });
-      await ingestProgramPdf({ db }, p.id, await makePdf([['Titelseite'], [text]]));
-      programId ??= p.id;
-    }
+    ctx = { db, config: makeConfig({ adminEmails: ['admin@example.de'] }), claude: fakeClaude(), dip, mailer: fakeMailer(), fetch };
     app = await startApp(ctx);
   });
 
@@ -118,24 +108,26 @@ describe('the website', () => {
     assert.equal(await ctx.db.one('select id from comments where id = $1', [commentId]), null);
   });
 
-  test('the article page shows verdicts, quotes and links to the passages', async () => {
+  test('the article page explains each decision and how the groups voted', async () => {
     await generateArticleOnce();
     const b = browser(app.base);
     const page = await b.get('/artikel/2026-09-24');
     assert.equal(page.status, 200);
     assert.match(page.text, /<details class="decision" id="beschluss-1">\s*<summary>/, 'each decision is a fold');
     assert.match(page.text, /<script src="\/static\/article\.js\?v=[0-9a-f]{10}" defer><\/script>/);
-    assert.match(page.text, /Mietpreisbremse bleibt – wie versprochen\?/);
-    assert.match(page.text, /Entspricht dem Programm/);
-    assert.match(page.text, /Fraktion stimmte mit Ja/);
-    assert.match(page.text, /href="\/stelle\/\d+">Wahlprogramm SPD, PDF-Seite 2<\/a>/);
-    assert.match(page.text, /Auf einen Blick/);
-    assert.match(page.text, /aria-label="SPD: (Entspricht|Widerspricht|Teilweise|Im Programm)/);
+    assert.match(page.text, /Mietpreisbremse bleibt bis 2029/);
+    // the votes, in seat order, in the fold's summary and in the open section
+    assert.match(page.text, /<span class="decision-votes"><span><strong>Ja:<\/strong> SPD, CDU\/CSU<\/span><span><strong>Nein:<\/strong> AfD<\/span><\/span>/);
+    assert.match(page.text, /<span class="vote-fraktion">SPD<\/span> <span class="vote-pill vote-dafuer">Ja<\/span>/);
+    assert.match(page.text, /<span class="vote-fraktion">AfD<\/span> <span class="vote-pill vote-dagegen">Nein<\/span>/);
+    assert.match(page.text, /<span class="vote-fraktion">Linke<\/span> <span class="vote-pill vote-unbekannt">unbekannt<\/span>/);
+    assert.ok(page.text.indexOf('vote-fraktion">Linke') < page.text.indexOf('vote-fraktion">AfD'), 'left to right as they sit');
+    assert.match(page.text, /CDU\/CSU und SPD dafür, AfD dagegen\./);
     assert.match(page.text, /Gemeinsamkeiten/);
+    assert.doesNotMatch(page.text, /Wahlprogramm|versprochen|\/stelle\/|venn/);
     assert.match(page.text, /Was du tun kannst/);
     assert.match(page.text, /href="https:\/\/www\.mieterbund\.de" target="_blank" rel="noopener">Mietervereine vor Ort/);
     assert.doesNotMatch(page.text, /erfunden/);
-    assert.match(page.text, /href="https:\/\/example\.org\/p\.pdf#page=2"/);
     assert.match(page.text, /Weitere Beschlüsse des Tages/);
     assert.match(page.text, /Plenarprotokoll 21\/45/);
     // what the result means: a passed bill is not in force yet
@@ -145,12 +137,6 @@ describe('the website', () => {
     assert.match(page.text, /Stand nach der Sitzung vom 24\. September 2026\./);
     assert.match(page.text, /href="\/bundestag-erklaert#gesetz">Wie ein Gesetz entsteht →/);
     assert.match(page.text, /Ein Antrag ist kein Gesetz/);
-
-    const passageId = Number(page.text.match(/href="\/stelle\/(\d+)">Wahlprogramm SPD/)[1]);
-    const passage = await b.get(`/stelle/${passageId}`);
-    assert.equal(passage.status, 200);
-    assert.match(passage.text, /Mietpreisbremse verlängern/);
-    assert.match(passage.text, /Zitiert in/);
 
     const feed = await b.get('/feed.xml');
     assert.match(feed.headers.get('content-type'), /rss/);
@@ -194,20 +180,24 @@ describe('the website', () => {
     assert.match(res.text, /aria-current="page">Mitmachen</);
   });
 
-  test('library search marks hits and escapes everything else', async () => {
+  test('the old library addresses lead home, and nothing links to them', async () => {
     const b = browser(app.base);
-    const res = await b.get(`/programme?q=${encodeURIComponent('Mietpreisbremse')}`);
+    for (const path of ['/programme', '/programme/spd-wahlprogramm-2025?q=Mieter', '/stelle/42']) {
+      const res = await b.get(path);
+      assert.equal(res.status, 301, path);
+      assert.equal(res.location, '/');
+    }
+    const home = await b.get('/');
+    assert.doesNotMatch(home.text, /href="\/programme|Bibliothek|versprochen/);
+  });
+
+  test('the about page says how the texts come about, and what they cannot do', async () => {
+    const res = await browser(app.base).get('/ueber');
     assert.equal(res.status, 200);
-    assert.match(res.text, /<mark>Mietpreisbremse<\/mark>/);
-    const nasty = await b.get(`/programme?q=${encodeURIComponent('"><script>x</script>')}`);
-    assert.match(nasty.text, /value="&quot;&gt;&lt;script&gt;x&lt;\/script&gt;"/);
-    assert.doesNotMatch(nasty.text, /<script>x/);
-    const program = await ctx.db.one('select slug from programs where id = $1', [programId]);
-    const one = await b.get(`/programme/${program.slug}?q=Mieter`);
-    assert.equal(one.status, 200);
-    assert.match(one.text, /<mark>Mieter/);
-    assert.equal((await b.get('/programme/gibt-es-nicht')).status, 404);
-    assert.equal((await b.get('/stelle/999999')).status, 404);
+    assert.match(res.text, /<h2 id="methode">Methode<\/h2>/);
+    assert.match(res.text, /Aus dem Ausschuss/);
+    assert.match(res.text, /<h2>Grenzen<\/h2>/);
+    assert.doesNotMatch(res.text, /Wahlprogramm|Bibliothek/);
   });
 
   test('login, logout, password reset', async () => {
@@ -267,7 +257,7 @@ describe('the website', () => {
     assert.equal((await ctx.db.one('select count(*)::int as n from comments where user_id = $1', [user.id])).n, 0);
   });
 
-  test('admin area: access, programme upload, hiding articles', async () => {
+  test('admin area: access, hiding articles', async () => {
     await generateArticleOnce();
     const visitor = browser(app.base);
     assert.equal((await visitor.get('/admin')).status, 303, 'not logged in → login');
@@ -280,26 +270,9 @@ describe('the website', () => {
     assert.equal(page.status, 200);
     assert.match(page.text, /Sitzungstage/);
     assert.match(page.text, /PGlite/);
-    assert.match(page.text, /Standard-Bibliothek/);
-    assert.match(page.text, /Zeit für Deutschland<\/td>\s*<td><span class="chip warn">noch nicht geladen/);
+    assert.doesNotMatch(page.text, /Bibliothek|Voyage/);
 
     assert.equal((await admin.post('/admin/artikel', { date: 'gestern' })).status, 400);
-
-    const pdf = await makePdf([['Grünes Programm'], ['Klimageld für alle Bürgerinnen und Bürger.']]);
-    const upload = await fetch(`${app.base}/admin/programme/upload?party=Gr%C3%BCne&title=Wahlprogramm&kind=wahlprogramm&source_url=https%3A%2F%2Fexample.org%2Fg.pdf`, {
-      method: 'POST',
-      headers: { Origin: app.base, Cookie: `sid=${admin.jar.get('sid')}`, 'Content-Type': 'application/pdf' },
-      body: pdf,
-    });
-    assert.equal(upload.status, 202);
-    const { slug } = await upload.json();
-    await app.handler.idle();
-    const program = await ctx.db.one('select status, page_count from programs where slug = $1', [slug]);
-    assert.deepEqual(program, { status: 'ready', page_count: 2 });
-    const notPdf = await fetch(`${app.base}/admin/programme/upload?party=X&title=Y`, { method: 'POST', headers: { Origin: app.base, Cookie: `sid=${admin.jar.get('sid')}` }, body: 'hallo' });
-    assert.equal(notPdf.status, 400);
-    const asVisitor = await fetch(`${app.base}/admin/programme/upload?party=X&title=Y`, { method: 'POST', headers: { Origin: app.base, Cookie: `sid=${visitor.jar.get('sid')}` }, body: pdf });
-    assert.equal(asVisitor.status, 403);
 
     const article = await ctx.db.one(`select id from articles where slug = '2026-09-24'`);
     assert.equal((await admin.post(`/admin/artikel/${article.id}/ausblenden`, {})).status, 303);
@@ -345,10 +318,11 @@ describe('the website', () => {
     assert.equal(sitemap.status, 200);
     assert.match(sitemap.headers.get('content-type'), /xml/);
     assert.match(sitemap.text, /<loc>http:\/\/localhost:3999\/artikel\/2026-09-24<\/loc><lastmod>/);
-    assert.match(sitemap.text, /<loc>http:\/\/localhost:3999\/programme\/[a-z0-9-]+<\/loc>/);
+    assert.doesNotMatch(sitemap.text, /\/programme/);
     assert.match((await b.get('/news-sitemap.xml')).text, /<urlset[^>]+sitemap-news/);
     assert.equal(JSON.parse((await b.get('/manifest.webmanifest')).text).lang, 'de');
     assert.equal((await b.get('/static/og.png')).headers.get('content-type'), 'image/png');
+    assert.match((await b.get('/')).text, /<meta property="og:image" content="http:\/\/localhost:3999\/static\/og\.png\?v=[0-9a-f]{10}">/);
 
     const article = await b.get('/artikel/2026-09-24?utm_source=newsletter');
     assert.match(article.text, /<link rel="canonical" href="http:\/\/localhost:3999\/artikel\/2026-09-24">/, 'no utm in the canonical address');
@@ -359,12 +333,6 @@ describe('the website', () => {
     assert.ok(news.datePublished && news.headline);
     assert.ok(ld['@graph'].some((x) => x['@type'] === 'BreadcrumbList'));
     assert.match((await b.get('/anmelden')).text, /<meta name="robots" content="noindex">/);
-  });
-
-  test('parties appear in the order they sit in the hall', async () => {
-    const b = browser(app.base);
-    const lib = await b.get('/programme');
-    assert.ok(lib.text.indexOf('SPD') < lib.text.indexOf('CDU/CSU'), 'SPD sits left of the Union');
   });
 
   test('the statistics count people, not bots or admins, without a cookie', async () => {

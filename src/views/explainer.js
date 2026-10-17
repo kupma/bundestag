@@ -173,7 +173,7 @@ const MEANINGS = [
     mark: () => html`<span class="result result-abgelehnt">${RESULT_LABEL.abgelehnt}</span>`,
     kind: 'Antrag',
     title: 'Vom Tisch – und der Normalfall',
-    text: 'Die meisten Anträge stellt die Opposition, und die Mehrheit haben die Fraktionen, die die Regierung tragen. Abgelehnte Anträge zeigen trotzdem, wofür eine Fraktion steht – deshalb legen wir auch sie neben die Programme.',
+    text: 'Die meisten Anträge stellt die Opposition, und die Mehrheit haben die Fraktionen, die die Regierung tragen. Abgelehnte Anträge zeigen trotzdem, wofür eine Fraktion steht – deshalb erklären wir auch sie.',
   },
   {
     mark: () => html`<span class="result result-erledigt">${RESULT_LABEL.erledigt}</span>`,
@@ -260,7 +260,7 @@ const GLOSSARY = [
   ['federfuehrend', 'Federführend, mitberatend', 'Nach der ersten Lesung geht ein Entwurf an einen zuständigen Ausschuss, den federführenden. Andere Ausschüsse, die das Thema auch betrifft, beraten mit und geben ihm ihre Stellungnahme. Am Ende schreibt der federführende Ausschuss den Bericht mit seiner Beschlussempfehlung.'],
   ['fraktion', 'Fraktion', 'Der Zusammenschluss von Abgeordneten einer Partei (bei CDU und CSU zweier Parteien). Braucht mindestens fünf Prozent der Sitze.'],
   ['hammelsprung', 'Hammelsprung', 'Eine Zählung, wenn das Ergebnis per Handzeichen unklar ist: Alle gehen hinaus und kommen durch die Tür für Ja, Nein oder Enthaltung zurück.'],
-  ['koalitionsvertrag', 'Koalitionsvertrag', 'Die Vereinbarung der Regierungsparteien über das, was sie gemeinsam vorhaben. Er liegt neben den Wahlprogrammen in unserer Bibliothek.'],
+  ['koalitionsvertrag', 'Koalitionsvertrag', 'Die Vereinbarung der Regierungsparteien über das, was sie gemeinsam vorhaben. Er ist kein Gesetz; umgesetzt wird er Beschluss für Beschluss im Bundestag.'],
   ['namentliche-abstimmung', 'Namentliche Abstimmung', 'Jede und jeder Abgeordnete stimmt mit einer Karte mit dem eigenen Namen. So ist für jede Person öffentlich, wie sie gestimmt hat.'],
   ['plenarprotokoll', 'Plenarprotokoll', 'Das wörtliche Protokoll jeder Sitzung. Daraus lesen wir ab, wie die Fraktionen gestimmt haben.'],
   ['plenum', 'Plenum', 'Die Versammlung aller Abgeordneten im Plenarsaal. Nur das Plenum kann für den Bundestag beschließen.'],
@@ -326,7 +326,7 @@ export function explainerPage(view) {
       <h3>Handzeichen, Aufstehen, Hammelsprung</h3>
       <p>Meist fragt die Sitzungsleitung: „Wer stimmt dafür? – Wer stimmt dagegen? – Wer enthält sich?“ Die Abgeordneten heben die Hand; bei der Schlussabstimmung über ein Gesetz stehen sie auf. Das Präsidium stellt fest, welche Seite die Mehrheit hat. Ist es sich nicht einig, folgt der Hammelsprung: Alle verlassen den Saal und kommen durch eine von drei Türen zurück – Ja, Nein oder Enthaltung – und werden dabei gezählt.</p>
       <h3>Namentliche Abstimmung</h3>
-      <p>Verlangt es eine Fraktion, wird namentlich abgestimmt: Alle Abgeordneten werfen eine Karte mit ihrem Namen in eine Urne, und hinterher ist für jede Person öffentlich, wie sie gestimmt hat. Bei Handzeichen wird nur festgehalten, wie die Fraktionen insgesamt gestimmt haben. Deshalb steht bei uns „Fraktion stimmte mit Ja“ – und „uneinheitlich“, wenn sie sich nicht einig war.</p>
+      <p>Verlangt es eine Fraktion, wird namentlich abgestimmt: Alle Abgeordneten werfen eine Karte mit ihrem Namen in eine Urne, und hinterher ist für jede Person öffentlich, wie sie gestimmt hat. Bei Handzeichen wird nur festgehalten, wie die Fraktionen insgesamt gestimmt haben. Deshalb steht bei uns pro Fraktion „Ja“, „Nein“ oder „Enthaltung“ – und „uneinheitlich“, wenn sie sich nicht einig war.</p>
       <h3>Welche Mehrheit reicht?</h3>
       <ul>
         <li><strong>Meistens die einfache Mehrheit:</strong> mehr Ja- als Nein-Stimmen. Enthaltungen zählen nicht mit; bei Gleichstand ist ein Antrag abgelehnt.</li>

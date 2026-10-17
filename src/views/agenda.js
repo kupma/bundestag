@@ -75,9 +75,8 @@ function when(item, date) {
   return html`<span class="agenda-when">${item.time ? html`Geplant um <time datetime="${date}T${item.time}">${clock(item.time)} Uhr</time>` : ''}${item.time && top ? ' · ' : ''}${top}</span>`;
 }
 
-function links(item, { search = true } = {}) {
+function links(item) {
   const out = [];
-  if (search && item.title) out.push(html`<a href="/programme?q=${encodeURIComponent(truncate(item.title, 80))}">Was die Parteien versprochen haben →</a>`);
   for (const d of item.drucksachen.slice(0, 4)) out.push(html`<a href="${d.url}" target="_blank" rel="noopener">Drucksache ${d.nummer} ↗</a>`);
   if (item.link) out.push(html`<a href="${item.link}" target="_blank" rel="noopener">Beim Bundestag ↗</a>`);
   return out.length ? html`<p class="agenda-links">${out.map((l, i) => html`${i ? ' · ' : ''}${l}`)}</p>` : '';
@@ -234,7 +233,7 @@ function item(entry, date, summaries, { quiet = false } = {}) {
         ${isBundle(entry) ? bundleList(entries) : html`${about(entry, main)}${committee(entry, main)}${together(entry, entries, main)}`}
         ${statusDetail(entry)}
         ${wording(entry)}
-        ${links(entry, { search: !isBundle(entry) })}
+        ${links(entry)}
       </div>
     </details>
   </li>`;
@@ -277,7 +276,7 @@ export function previewPage(view, { days, today, fetchedAt, summaries = new Map(
   const body = html`<div class="narrow">
     <p class="eyebrow">Vorschau</p>
     <h1>Darüber stimmt der Bundestag ab</h1>
-    <p class="lede">Die Tagesordnung der kommenden Sitzungstage – vorn die Punkte, an deren Ende abgestimmt wird. Nach der Sitzung legen wir jeden Beschluss neben die Wahlprogramme.</p>
+    <p class="lede">Die Tagesordnung der kommenden Sitzungstage – vorn die Punkte, an deren Ende abgestimmt wird. Nach der Sitzung erklären wir jeden Beschluss und wie die Fraktionen abgestimmt haben.</p>
     <p class="meta">Was „erste Lesung“, „Beschlussempfehlung“ oder „Überweisung“ heißt und wann ein Gesetz wirklich gilt, steht unter <a href="${EXPLAINER_PATH}">So arbeitet der Bundestag</a>.</p>
     ${days.length > 1
       ? html`<nav class="theme-nav" aria-label="Sitzungstage">${days.map((d) => {
@@ -295,7 +294,7 @@ export function previewPage(view, { days, today, fetchedAt, summaries = new Map(
         </section>`}
     <aside class="panel disclaimer" id="so-lesen">
       <p><strong>Woran wir Abstimmungen erkennen.</strong> An der Sprache der Tagesordnung: Die zweite und dritte Beratung eines Gesetzentwurfs und die Beratung einer Beschlussempfehlung enden mit einer Abstimmung, ebenso Wahlen und die „abschließenden Beratungen ohne Aussprache“. Eine erste Beratung endet mit der Überweisung in die Ausschüsse. Die Tagesordnung kann sich bis zur Sitzung ändern, und die Zeiten sind geplant, nicht garantiert. <a href="${EXPLAINER_PATH}#gesetz">Wie ein Gesetz entsteht</a></p>
-      <p><strong>Worum es geht.</strong> Diese Zusammenfassungen schreibt eine KI (Claude von Anthropic) aus dem Anfang der jeweiligen Drucksache – bei Gesetzentwürfen ist das das Vorblatt mit Problem, Lösung und Kosten. Sie geben wieder, wie die Drucksache ihr Anliegen begründet, nicht unsere Einschätzung. Fehler sind möglich; maßgeblich ist das verlinkte Original.</p>
+      <p><strong>Worum es geht und Aus dem Ausschuss.</strong> Diese Zusammenfassungen schreibt eine KI (Claude von Anthropic) aus dem Anfang der jeweiligen Drucksache – bei Gesetzentwürfen ist das das Vorblatt mit Problem, Lösung und Kosten, bei Ausschussberichten die Empfehlung und der Bericht über die Beratungen. Sie geben wieder, wie die Drucksache ihr Anliegen begründet, nicht unsere Einschätzung. Fehler sind möglich; maßgeblich ist das verlinkte Original.</p>
       <p class="meta">Quelle: <a href="https://www.bundestag.de/tagesordnungen" target="_blank" rel="noopener">Tagesordnung des Deutschen Bundestags ↗</a>${fetchedAt ? `, zuletzt abgerufen ${formatDateTimeDe(fetchedAt)}` : ''}.</p>
     </aside>
   </div>`;

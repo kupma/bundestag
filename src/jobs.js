@@ -1,5 +1,5 @@
 // A written record of every background run – fetching DIP, writing an
-// article, importing a programme, sending the newsletter – so the admin page
+// article, summarising the agenda, sending the newsletter – so the admin page
 // can say what happened overnight instead of leaving it to the Railway logs.
 
 export async function runJob(db, kind, fn) {

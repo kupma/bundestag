@@ -1,8 +1,10 @@
 # Wahlwort
 
-What the Bundestag decides, and what the parties promised beforehand.
+What the Bundestag decides, explained.
 
-After every sitting day of the German Bundestag, this site publishes an article that goes through the day's decisions and compares each one with the parties' election programmes (and the coalition agreement). The comparison covers how each parliamentary group voted and whether the decision matches, partly matches or contradicts its programme. Every verdict links to the page in the programme PDF where the promise is written. Readers can register, comment on the articles, and get each article by email.
+After every sitting day of the German Bundestag, this site publishes an article that goes through the day's decisions in plain language: what was decided, what it means, and how each parliamentary group voted. Every decision links to its documents (the Drucksachen and the plenary protocol). Readers can register, comment on the articles, and get each article by email.
+
+Earlier versions also compared every decision with the parties' election programmes. That is gone: a parliament that only ever did what the programmes say could not form coalitions or find compromises, so measuring decisions against them told readers less than it seemed to.
 
 The **/vorschau** page looks ahead: the agenda of the coming sitting days, with the items that end in a vote first (see *The preview* below).
 
@@ -17,22 +19,19 @@ The site itself is in German. Code and docs are in English.
 ```
 DIP API ──► decisions (grouped per Vorgang and day) ──► details: abstract, Drucksache, vote formula from the plenary protocol
                                                                         │
-Programme PDFs ──► page-exact passages ──► German full-text index (+ optional embeddings)
+         Claude explains each decision (structured JSON): what was decided, the result, each group's vote, what readers can do
                                                                         │
-         Claude writes search queries ──► best passages per decision and per programme
+         checks: every group gets exactly one vote from a fixed list; without the protocol every vote is "unbekannt";
+                 suggestions link only to the curated list
                                                                         │
-         Claude analyses each decision against each programme (structured JSON, cites passage ids, quotes verbatim)
-                                                                        │
-         checks: citations must point at passages Claude was shown; quotes must be in the passage;
-                 a verdict without a verifiable citation is withdrawn
+         Claude writes headline, lede and introduction for the day
                                                                         │
          article stored as JSON ──► rendered page, RSS, newsletter
 ```
 
 - **Decisions** come from the Bundestag's documentation system [DIP](https://dip.bundestag.de) (`/vorgangsposition`). A decision is a plenary position with a *Beschlussfassung*. Referrals to committee don't count, and the 2nd and 3rd reading of the same bill on the same day are merged into one. Bills and roll-call votes are ranked first. Petitions and elections go to a short list at the end.
-- **How the groups voted** isn't in DIP's structured data. It is in the plenary protocol, in the President's vote formula ("mit den Stimmen der … gegen die Stimmen der …"). `src/protocol.js` finds these sentences next to the decision's Drucksache numbers and passes them to Claude.
-- **The library** splits each PDF into passages of about 900 characters. A passage never crosses a page, so every citation has an exact page number and a link `…pdf#page=N`. Search uses Postgres full-text search with the German stemmer. With `VOYAGE_API_KEY` set, it also uses vector similarity, fused with reciprocal rank fusion.
-- **Claude** (`claude-sonnet-5-5`, adaptive thinking, structured outputs) is called roughly `2 + number of decisions` times per article. Requests opt into server-side refusal fallbacks (`fallbacks: "default"`), because parliamentary topics such as defence and extremism can trip a safety classifier.
+- **How the groups voted** isn't in DIP's structured data. It is in the plenary protocol, in the President's vote formula ("mit den Stimmen der … gegen die Stimmen der …"). `src/protocol.js` finds these sentences next to the decision's Drucksache numbers and passes them to Claude, which turns them into one vote per group: *dafür*, *dagegen*, *enthalten*, *gespalten* or *unbekannt*. Until the protocol is out, every vote is *unbekannt*, whatever the model says.
+- **Claude** (`claude-sonnet-5-5`, adaptive thinking, structured outputs) is called `1 + number of decisions` times per article. Requests opt into server-side refusal fallbacks (`fallbacks: "default"`), because parliamentary topics such as defence and extremism can trip a safety classifier.
 - **Timing:** a built-in clock ticks every 15 minutes (the preview's agenda has its own schedule, see *The preview*). It fetches DIP hourly and never writes about the current day. Yesterday's sitting is written the next morning (from 06:00 Berlin time), or earlier once its data has stopped changing for 12 hours. DIP records a sitting's decisions over one or two days, so the article is rewritten as the rest arrives (once the new data has been quiet for 12 hours, or the day is two days old). If DIP adds decisions later, or the plenary protocol (with the votes) only appears after the article, the article is rewritten; the newsletter is not sent again. On the very first run the app looks back four weeks and writes the most recent sitting week, so a new site does not start empty. It stays quiet before 06:00 Berlin time and gives up on a date after 3 failures in 24 hours. Emails go out between 06:00 and 21:00, and only for sitting days of the last three days.
 
 ## The preview
@@ -43,13 +42,15 @@ Programme PDFs ──► page-exact passages ──► German full-text index (+
 - **Which items are votes** is not a field, it is in the agenda's wording: *Zweite und dritte Beratung* of a bill, *Beratung der Beschlussempfehlung* of a committee, elections, the budget's *Einzelpläne* and the *Abschließende Beratungen ohne Aussprache* end in a vote; *Erste Beratung* and *Überweisungen im vereinfachten Verfahren* end in a referral to committee. A motion without a committee report (*Beratung des Antrags*) is usually referred, so it is listed under "Abstimmung möglich". Checked against 173 agenda weeks of the 18th and 19th Bundestag: of the items marked as a vote, 99.8 % were voted on; 87 % of all votes were marked as one, and 96 % as a vote or a possible one. Items with several parts ("a) … b) …") are split, since a first reading and a final vote often share one item.
 - **Timing:** the clock fetches the current week and the next two sitting weeks every two hours (recess weeks are skipped within a small request budget). A day that disappears from the agenda is removed; a day not confirmed for a week is no longer shown. `AGENDA=off` switches it off.
 - **Folded items:** every item with a vote is a fold. Closed, it shows the time, the title, what is decided and one line on what it is about; open, the summary, the other Drucksachen debated with it ("Gemeinsam beraten"), the result once the Bundestag has voted, and the agenda's own wording (folded once more). For each part of an item, `gistOf` in `src/agenda.js` reads from the agenda's wording what it is (Antrag, Gesetzentwurf, Petitionen, EU-Vorhaben …), who brought it in, and its own title, so a bundle of votes without debate lists "Natur erleben, Umwelt schützen – Antrag · Grüne" instead of "Beratung der Beschlussempfehlung und des Berichts des Ausschusses für …"; a dozen petition overviews become one line.
+- **Where a bill goes next:** a first reading ends with the bill being referred to committees. The agenda names them ("Überweisungsvorschlag"); the preview lists them, with the lead committee ("(f)") written out as *federführend* and the others as *mitberatend*. The glossary on /bundestag-erklaert explains both.
+- **"Aus dem Ausschuss":** before the second and third reading, the agenda names the committee's report ("Beschlussempfehlung und Bericht"). That report is summarised too, with its own prompt: what the committee recommends, what it changed in the bill, whether it heard experts, and how the groups voted in it. A long report goes in as its opening plus the account of the deliberations ("Bericht der Abgeordneten"), which often only comes after a long table of changes. For a motion debated alongside, the preview shows the committee's recommendation in one line.
 - **"Worum es geht":** for the big items (bills, committee reports, motions, first readings; not the bundles of votes or referrals without debate) the preview shows a short summary of the Drucksache behind each part – one sentence (`kurz`) for the closed item, up to three for the open one – written by `claude-haiku-5-5` (`SUMMARY_MODEL`) from the opening of its text in DIP. For a bill that opening is the Vorblatt (problem, solution, alternatives, costs), the summary the Bundestag puts in front of every bill; the text is capped at 60,000 characters, so every request stays under the 100K-token price step of Haiku. Each Drucksache is summarised once and stored (`drucksache_summaries`); one that comes back later costs nothing. Raising `SUMMARY_VERSION` in `src/summaries.js` writes the stored ones again with the new prompt; until then the old ones stay on the page. The clock writes at most `SUMMARY_MAX_PER_RUN` (30) per tick; a text not yet in DIP is tried again after 12 hours, at most five times. The page marks them as AI summaries and links the original. Expect a few dollars a year. `SUMMARIES=off` switches them off; the admin page shows their token count.
 
 ## Design
 
-- **Politically neutral colour.** Warm paper and stone tones with a charcoal ink. Almost every hue is claimed by some party in Germany (black, red, green, yellow, blue, purple, magenta, orange, turquoise), so the site uses none of them. Party colours appear only as a small identification dot, the same size for every party. Parties are listed in the order they sit in the plenary hall (left to right as seen from the President), the coalition agreement last.
-- **Shapes instead of colours.** Two circles stand for "versprochen" (left) and "beschlossen" (right). Their overlap is the verdict: nearly one circle = *entspricht*, half overlapping = *teilweise*, apart = *widerspricht*, a dashed empty circle = *nicht thematisiert*. The same two circles are the logo. A verdict never depends on colour alone, which also works in greyscale, for colour-blind readers, and in dark mode.
-- **Calm by default.** Soft rounded shapes, generous whitespace, sentence case, no alarm colours. Results use shape too: adopted = filled pill, rejected = outlined, settled = dashed.
+- **Politically neutral colour.** Warm paper and stone tones with a charcoal ink. Almost every hue is claimed by some party in Germany (black, red, green, yellow, blue, purple, magenta, orange, turquoise), so the site uses none of them. Party colours appear only as a small identification dot, the same size for every party. The groups are listed in the order they sit in the plenary hall (left to right as seen from the President, `src/plenum.js`).
+- **Shapes instead of colours.** A vote is told apart by its shape: *Ja* is a filled pill, *Nein* an outlined one, *Enthaltung* dashed, *uneinheitlich* dotted. Results work the same way: adopted = filled, rejected = outlined, settled = dashed. Nothing depends on colour alone, which also works in greyscale, for colour-blind readers, and in dark mode. The logo is the plenary hall's three rows of seats, seen from above.
+- **Calm by default.** Soft rounded shapes, generous whitespace, sentence case, no alarm colours.
 - **Type.** [Fraunces](https://github.com/undercasetype/Fraunces) (soft axis) for headings and [Figtree](https://github.com/erikdkennedy/figtree) for text. Both are served from `static/fonts` under the SIL Open Font License, so nothing loads from Google.
 - **Only curated links.** "Was du tun kannst" may link only to entries in `src/resources.js`, and not to the general ones marked there (MPs, petitions, reading up); the JSON schema Claude answers with enforces that, and older articles have suggestions with such links hidden. The /mitmachen content lives in `src/mitmachen.js`.
 
@@ -65,25 +66,15 @@ Programme PDFs ──► page-exact passages ──► German full-text index (+
    | `ADMIN_EMAILS` | your email address(es); these accounts can open `/admin` |
    | `MAIL_API_KEY`, `MAIL_FROM` | [Resend](https://resend.com) for address confirmation, password reset and the newsletter. Verify your sending domain in Resend first |
    | `IMPRINT_NAME`, `IMPRINT_ADDRESS`, `IMPRINT_EMAIL` | the legally required *Impressum* |
-   | `VOYAGE_API_KEY` | optional, adds semantic search |
    | `SITE_NAME` | optional, the name shown everywhere (default *Wahlwort*) |
    | `GOOGLE_SITE_VERIFICATION`, `BING_SITE_VERIFICATION` | optional, the `content` value of the verification meta tag from Google Search Console / Bing Webmaster Tools |
    | `INDEXNOW_KEY` | optional, any 8–128 letters, digits or dashes; new articles are then announced to Bing & Co. at once via IndexNow |
    | `PLAUSIBLE_DOMAIN` | optional, a second, external statistics view with [Plausible](https://plausible.io) (cookieless). The built-in statistics need nothing |
 4. **Networking → Generate Domain.** `BASE_URL` defaults to that domain. **Custom domain:** add it under *Networking → Custom Domain*, create the CNAME (and TXT) record Railway shows at your registrar, then set `BASE_URL=https://your-domain.de`. From then on the Railway address and `www.` answer with a permanent redirect to it, so search engines index every page once.
 5. Open the site, **register with an address from `ADMIN_EMAILS`**, and go to **/admin**.
-6. **The library fills itself.** On the first tick after a deploy (about 20 seconds after start), the app downloads the programmes of every group in the 21st Bundestag and the coalition agreement from the official websites, checks them, and imports them. The sources are listed in `src/program-sources.js`:
-   - AfD: *Zeit für Deutschland*
-   - Bündnis 90/Die Grünen: *Zusammen wachsen*
-   - CDU/CSU: *Politikwechsel für Deutschland*
-   - Die Linke: *Alle wollen regieren. Wir wollen verändern.*
-   - SPD: *Mehr für Dich. Besser für Deutschland.*
-   - CDU, CSU and SPD: coalition agreement *Verantwortung für Deutschland*
-
-   Every download must pass three checks before it is imported: it is a PDF, it is long enough to be the full version rather than a short one, and it names its own title. If a party has moved its file, the app asks Claude's web search for the current one, restricted to that party's own domains, and checks it the same way. *Admin → Bibliothek* shows the status of each document, and *Fehlende jetzt laden* retries. Other documents can still be added by address or upload. Set `DEFAULT_LIBRARY=off` to switch the automatic import off.
-7. **Check DIP:** in the Railway shell (or locally with the key), run `npm run dip:probe -- 2026-09-24 --raw` for a recent sitting day. Then press *Jetzt aktualisieren* in the admin area. To write an article right away, use *Artikel für Sitzungstag erzeugen*.
-8. **Review `/datenschutz`** (a template) before going public.
-9. **Search engines:** add the site in [Google Search Console](https://search.google.com/search-console) and [Bing Webmaster Tools](https://www.bing.com/webmasters) and submit `/sitemap.xml` (Google News also reads `/news-sitemap.xml`). Search terms only show up there.
+6. **Check DIP:** in the Railway shell (or locally with the key), run `npm run dip:probe -- 2026-09-24 --raw` for a recent sitting day. Then press *Jetzt aktualisieren* in the admin area. To write an article right away, use *Artikel für Sitzungstag erzeugen*.
+7. **Review `/datenschutz`** (a template) before going public.
+8. **Search engines:** add the site in [Google Search Console](https://search.google.com/search-console) and [Bing Webmaster Tools](https://www.bing.com/webmasters) and submit `/sitemap.xml` (Google News also reads `/news-sitemap.xml`). Search terms only show up there.
 
 ## Visitors and search engines
 
@@ -108,8 +99,6 @@ Scripts (all read the same environment variables, so they also work with `railwa
 |---|---|
 | `npm run dip:probe -- 2026-09-24 [2026-09-26] [--raw]` | what DIP returns and which decisions the app extracts. Read-only |
 | `npm run agenda:probe -- [2026-10-05] [--raw]` | what the Bundestag's agenda returns for the coming weeks and which items the preview counts as votes. Read-only |
-| `npm run ingest -- --defaults` | import the standard library now (what the clock does on its own) |
-| `npm run ingest -- --party SPD --title "…" --election "Bundestagswahl 2025" --url https://…pdf [--file local.pdf] [--kind koalitionsvertrag]` | import any other programme |
 | `npm run generate -- 2026-09-24 [--force] [--mail]` | (re)write one day's article |
 
 ## Layout
@@ -121,18 +110,15 @@ src/articles.js      the article pipeline and its checks
 src/dip.js           DIP client, decision extraction, sync
 src/protocol.js      vote formulas from the plenary protocol
 src/agenda.js        the agenda of the coming sitting days, and which items are votes
-src/summaries.js     "Worum es geht": short summaries of the Drucksachen on the agenda
-src/programs.js      PDF import, passages
-src/program-sources.js  the standard library: official PDF addresses
-src/default-library.js  downloads, checks and imports the standard library
-src/retrieval.js     full-text + vector retrieval, library search
+src/summaries.js     "Worum es geht" and "Aus dem Ausschuss": short summaries of the Drucksachen on the agenda
+src/plenum.js        the parliamentary groups, in the order they sit
 src/claude.js        Claude calls (structured output, fallbacks)
 src/newsletter.js    daily email, sent at most once per person
 src/scheduler.js     the 15-minute tick
 src/mitmachen.js     content of the /mitmachen page
 src/resources.js     the only links suggestions may point to
 src/views/           server-rendered pages (everything escaped by default)
-src/views/shapes.js  the two-circle shape language
+src/views/shapes.js  the logo and small marks
 src/views/agenda.js  the preview page (/vorschau) and its card on the home page
 src/views/explainer.js  the explainer (/bundestag-erklaert) and the "Was heißt das?" of each decision
 src/analytics.js     cookieless visitor statistics
@@ -144,8 +130,7 @@ test/                node:test suites with PGlite and fake Claude/DIP/mail
 
 ## Good to know
 
-- **Cost:** about 2 + N Claude calls per sitting day, where N is at most 8 decisions. Expect somewhere under a dollar per article with `claude-sonnet-5-5` (the analyses at effort `high` are most of it: their input is the programme passages, their output mostly thinking). A rewrite sends only what changed to Claude again: an analysis whose inputs (the decision, its documents and vote sentences, the programme library, the prompt) are unchanged is kept, and so are title and introduction if nothing they summarise changed. Once the protocol arrives, every decision is analysed again, since the votes are new input for all of them. The admin table shows the tokens of all versions of an article together; *neu schreiben* in the admin area writes everything anew. The Bundestag sits on roughly 60–70 days a year.
+- **Cost:** 1 + N Claude calls per sitting day, where N is at most 8 decisions. Expect well under a dollar per article with `claude-sonnet-5-5` (the analyses at effort `high` are most of it, their output mostly thinking). A rewrite sends only what changed to Claude again: an analysis whose inputs (the decision, its documents and vote sentences, the prompt) are unchanged is kept, and so are title and introduction if nothing they summarise changed. Once the protocol arrives, every decision is analysed again, since the votes are new input for all of them. The admin table shows the tokens of all versions of an article together; *neu schreiben* in the admin area writes everything anew. The Bundestag sits on roughly 60–70 days a year.
+- **Older articles:** an article written by an earlier version of the pipeline (`ARTICLE_VERSION` in `src/articles.js`; version 1 compared decisions with the election programmes) is written anew by the clock, newest first, one per tick and only when nothing more urgent is due. Each costs about as much as a new article, and the newsletter is not sent again. Until then it is shown without the programme comparison. The tables of the old library (`programs`, `program_chunks`, `article_citations`) are left in the database, unused.
 - **DIP's response format** is implemented from its documentation and hasn't yet been exercised against the live API from this codebase. `npm run dip:probe` is the quickest way to confirm, and `src/dip.js` is the only place to adjust if a field is named differently.
-- **Page numbers** are PDF page numbers, not printed page numbers. The site says "PDF-S." everywhere.
-- **Programme text** is shown as the cited passage with a link to the party's original, not as a full re-publication.
 - **Comments** need a confirmed email address when mail is configured. Admins can delete any comment, users their own. Account deletion removes the user's comments.
