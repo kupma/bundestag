@@ -14,21 +14,28 @@ const row = (time, top, title, detail) => ({ time, top, topic: { title, detail }
 const ROWS = [
   row('09:00', '8', 'Mietpreisbremse', 'Zweite und dritte Beratung des von der Bundesregierung eingebrachten Entwurfs eines Gesetzes zur Verlängerung der Mietpreisbremse<br/>Drucksache 21/1234<br/>Beschlussempfehlung und Bericht des Rechtsausschusses<br/>Drucksache 21/1300'),
   row('10:40', '9', 'Wehrdienst', 'a) Erste Beratung des von der Bundesregierung eingebrachten Entwurfs eines Gesetzes zur Modernisierung des Wehrdienstes<br/>Drucksache 21/1500<br/>b) Beratung der Beschlussempfehlung und des Berichts des Verteidigungsausschusses zu dem Antrag der Fraktion Die Linke<br/>Wehrpflicht nicht wieder einführen<br/>Drucksachen 21/1400, 21/1450'),
-  row('12:00', '10', 'Pflege', 'Erste Beratung des von der Bundesregierung eingebrachten Entwurfs eines Gesetzes zur Stärkung der Pflege<br/>Drucksache 21/1550'),
+  row('12:00', '10', 'Pflege', 'Erste Beratung des von der Bundesregierung eingebrachten Entwurfs eines Gesetzes zur Stärkung der Pflege<br/>Drucksache 21/1550<br/>Überweisungsvorschlag:<br/>Ausschuss für Gesundheit (f)<br/>Haushaltsausschuss gemäß § 96 GO'),
   row('18:35', '11', 'Abschließende Beratungen ohne Aussprache', 'a) Beratung des Antrags der Fraktion der AfD<br/>Grenzkontrollen dauerhaft einführen<br/>Drucksache 21/1800'),
   row('19:00', 'ZP 3', 'Aktuelle Stunde', 'auf Verlangen der Fraktion der AfD<br/>Energiepreise'),
 ];
 
+const REPORTS = { '21/1300': 'Beschlussempfehlung und Bericht', '21/1450': 'Beschlussempfehlung und Bericht' };
+
 test('which Drucksachen an agenda item is about', () => {
   const [bill, mixed, firstReading, bundle, debate] = ROWS.map(parseRow);
-  assert.deepEqual(vorlagenOf(bill), [{ nummer: '21/1234', kind: 'gesetz' }], 'the bill, not the committee report');
-  assert.deepEqual(vorlagenOf(mixed), [{ nummer: '21/1500', kind: 'ueberweisung' }, { nummer: '21/1400', kind: 'beschlussempfehlung' }], 'one per part, the motion behind the report');
+  assert.deepEqual(vorlagenOf(bill), [{ nummer: '21/1234', kind: 'gesetz' }, { nummer: '21/1300', kind: 'bericht' }], 'the bill, then the committee report on it');
+  assert.deepEqual(
+    vorlagenOf(mixed),
+    [{ nummer: '21/1500', kind: 'ueberweisung' }, { nummer: '21/1400', kind: 'beschlussempfehlung' }, { nummer: '21/1450', kind: 'bericht' }],
+    'one per part: the bill at its first reading; the motion and the report on it',
+  );
   assert.deepEqual(vorlagenOf(firstReading), [{ nummer: '21/1550', kind: 'ueberweisung' }]);
   assert.deepEqual(vorlagenOf(bundle), [], 'votes without debate are not the big topics');
   assert.deepEqual(vorlagenOf(debate), []);
   // an agenda row stored before parts had their own Drucksachen
-  const old = { ...bill, parts: bill.parts.map(({ drucksachen, ...p }) => p) };
+  const old = { ...bill, parts: bill.parts.map(({ drucksachen, report, referral, ...p }) => p) };
   assert.deepEqual(vorlagenOf(old), [{ nummer: '21/1234', kind: 'gesetz' }]);
+  assert.equal(firstReading.parts[0].referral, 'Ausschuss für Gesundheit (federführend), Haushaltsausschuss');
 });
 
 test('a long Drucksache goes in as its opening, and says so', () => {
@@ -44,18 +51,23 @@ test('summaries are written once per Drucksache, on Haiku, and a missing text is
   const db = await makeDb();
   const today = berlinDate();
   await db.query('insert into agenda_days (sitting_date, session, items) values ($1, 24, $2)', [today, JSON.stringify(ROWS.map(parseRow))]);
-  const dip = fakeDip();
+  const dip = fakeDip({ types: REPORTS });
   const missing = '21/1550';
   const realText = dip.drucksacheText;
   dip.drucksacheText = async (nummer) => (nummer === missing ? null : realText(nummer));
   const ctx = { db, dip, claude: fakeClaude(), config: makeConfig() };
 
   const pending = await pendingSummaries(db, { today });
-  assert.deepEqual(pending, ['21/1234', '21/1500', '21/1400', '21/1550']);
+  assert.deepEqual(pending, ['21/1234', '21/1300', '21/1500', '21/1400', '21/1450', '21/1550']);
   const run = await writeSummaries(ctx, pending);
-  assert.equal(run.written, 3);
+  assert.equal(run.written, 5);
   assert.equal(run.failed, 1);
-  assert.deepEqual(run.usage, { input: 300, output: 150, calls: 3 });
+  assert.deepEqual(run.usage, { input: 500, output: 250, calls: 5 });
+  // a committee report gets the prompt for committee reports
+  const reportCall = ctx.claude.calls.find((c) => /nummer="21\/1300"/.test(c.prompt));
+  assert.match(reportCall.prompt, /typ="Beschlussempfehlung und Bericht"/);
+  assert.match(reportCall.system, /Bericht eines Bundestagsausschusses/);
+  assert.match(ctx.claude.calls.find((c) => /nummer="21\/1234"/.test(c.prompt)).system, /fasst eine Drucksache/);
   assert.ok(ctx.claude.calls.every((c) => c.model === 'claude-haiku-5-5' && c.effort === 'low'));
   assert.match(ctx.claude.calls[0].prompt, /<drucksache nummer="21\/1234" typ="Gesetzentwurf"/);
 
@@ -95,10 +107,10 @@ test('the clock writes the summaries, and the preview shows them as AI summaries
   const db = await makeDb();
   const today = berlinDate();
   await db.query('insert into agenda_days (sitting_date, session, items) values ($1, 24, $2)', [today, JSON.stringify(ROWS.map(parseRow))]);
-  const ctx = { db, dip: fakeDip(), claude: fakeClaude(), config: makeConfig({ defaultLibrary: false }), mailer: fakeMailer() };
+  const ctx = { db, dip: fakeDip({ types: REPORTS }), claude: fakeClaude(), config: makeConfig({ defaultLibrary: false }), mailer: fakeMailer() };
 
   const report = await tick(ctx, { now: new Date() });
-  assert.equal(report.summaries.written, 4);
+  assert.equal(report.summaries.written, 6);
   assert.ok(await db.one(`select 1 as x from job_runs where kind = 'zusammenfassungen' and ok`));
   const again = await tick(ctx, { now: new Date() });
   assert.equal(again.summaries, null, 'nothing left to write, no job');
@@ -122,6 +134,10 @@ test('the clock writes the summaries, and the preview shows them as AI summaries
     // a first reading, folded under "Außerdem", carries its one line too
     assert.match(page, /<p class="agenda-rest-about">Kurz gesagt: 21\/1550\. <span class="meta">\(KI-Zusammenfassung, Drucksache <a[^>]*>21\/1550 ↗<\/a>\)<\/span><\/p>/);
     assert.doesNotMatch(page, /21\/1800\./, 'no summaries for votes without debate');
+    // what the committee made of it, and where a first reading goes
+    assert.match(page, /<p class="agenda-about-title">Aus dem Ausschuss<\/p>\s*<p>Die Bundesregierung will mit der Drucksache 21\/1300 etwas ändern\.<\/p>\s*<p class="meta">KI-Zusammenfassung des Ausschussberichts <a[^>]*>21\/1300 ↗<\/a>/);
+    assert.match(page, /<strong>Ausschuss:<\/strong> Kurz gesagt: 21\/1450\./, 'the report on the motion debated alongside, in one line');
+    assert.match(page, /Geht zur Beratung an: Ausschuss für Gesundheit \(federführend\), Haushaltsausschuss/);
     assert.match(page, /Diese Zusammenfassungen schreibt eine KI/);
   } finally {
     await app.close();

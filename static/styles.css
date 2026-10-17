@@ -386,6 +386,9 @@ form.inline { display: inline; }
 .agenda-about .agenda-about-title { font-weight: 700; font-size: 0.92rem; margin-bottom: 4px; }
 .agenda-about .pill { background: var(--surface); margin-right: 4px; }
 .agenda-rest-about { margin: 6px 0 0; color: var(--ink-2); font-size: 0.95rem; }
+.agenda-committee { background: transparent; box-shadow: inset 0 0 0 1.5px var(--stone-2); }
+.agenda-referral { font-size: 0.92rem; color: var(--ink-2); }
+.agenda-referral strong { color: var(--ink); }
 .agenda-rest { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
 .agenda-rest summary { cursor: pointer; font-weight: 600; color: var(--ink-2); }
 .agenda-list { list-style: none; padding: 0; margin: 8px 0 0; }

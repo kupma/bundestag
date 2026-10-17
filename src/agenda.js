@@ -219,6 +219,39 @@ export function gistOf(lines) {
   return { doc, by: doc === 'EU-Vorhaben' ? '' : authorOf(frame), title };
 }
 
+// Where a bill goes after its first reading: "Überweisungsvorschlag:
+// Verteidigungsausschuss (f), Auswärtiger Ausschuss", or each committee on a
+// line of its own. "(f)" marks the committee in charge ("federführend"); the
+// budget committee's note on § 96 of the rules of procedure is left out.
+export function referralOf(lines) {
+  const at = lines.findIndex((l) => /^Überweisungsvorschlag/i.test(l));
+  if (at < 0) return '';
+  const names = [lines[at].replace(/^Überweisungsvorschlag:?\s*/i, '')];
+  for (let i = at + 1; i < lines.length && /ausschuss/i.test(lines[i]) && !/^(?:[a-z]{1,2}\)|Drucksache|Beschlussempfehlung|Bericht)/i.test(lines[i]); i++) {
+    names.push(lines[i]);
+  }
+  return names
+    .map((n) => n.replace(/\s*(?:mitberatend und )?gemäß §\s*96 (?:der )?(?:GO|Geschäftsordnung)\b\.?/gi, '').replace(/\((?:f|federführend)\)/gi, '(federführend)').trim())
+    .filter(Boolean)
+    .join(', ');
+}
+
+// The committee's report ("Beschlussempfehlung und Bericht") on a bill or a
+// motion: for a bill the Drucksache named after "Beschlussempfehlung und
+// Bericht …"; for a motion the last of "Drucksachen <motion>, <report>".
+export function reportOf(lines) {
+  const at = lines.findIndex((l) => /^Beschlussempfehlung und Bericht\b/i.test(l));
+  if (at >= 0) {
+    const after = drucksachenIn(lines.slice(at + 1, at + 3));
+    if (after.length) return after[0].nummer;
+  }
+  if (/Beratung der Beschlussempfehlung/i.test(lines.join(' '))) {
+    const all = drucksachenIn(lines);
+    if (all.length >= 2) return all[all.length - 1].nummer;
+  }
+  return '';
+}
+
 // One agenda row as the page shows it. Items with several parts ("a) …
 // b) …") are split, because one part may be a first reading and the next a
 // final vote.
@@ -264,6 +297,8 @@ export function parseRow(row) {
       kind: partKinds[i],
       drucksachen: drucksachenIn(p).map((d) => d.nummer),
       ...gistOf(p),
+      referral: referralOf(p),
+      report: reportOf(p),
     })),
     kind,
     vote: VOTE_KINDS.has(kind),

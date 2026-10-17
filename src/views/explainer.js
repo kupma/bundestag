@@ -257,6 +257,7 @@ const GLOSSARY = [
   ['einspruchsgesetz', 'Einspruchsgesetz', 'Ein Gesetz, gegen das der Bundesrat nur Einspruch einlegen kann. Der Bundestag kann ihn überstimmen.'],
   ['entschliessung', 'Entschließung', 'Eine politische Erklärung des Bundestags, oft zu einem Gesetz. Rechtlich nicht bindend.'],
   ['erledigt', 'Für erledigt erklärt', 'Über eine Vorlage wird nicht mehr in der Sache entschieden, weil sie sich überholt hat.'],
+  ['federfuehrend', 'Federführend, mitberatend', 'Nach der ersten Lesung geht ein Entwurf an einen zuständigen Ausschuss, den federführenden. Andere Ausschüsse, die das Thema auch betrifft, beraten mit und geben ihm ihre Stellungnahme. Am Ende schreibt der federführende Ausschuss den Bericht mit seiner Beschlussempfehlung.'],
   ['fraktion', 'Fraktion', 'Der Zusammenschluss von Abgeordneten einer Partei (bei CDU und CSU zweier Parteien). Braucht mindestens fünf Prozent der Sitze.'],
   ['hammelsprung', 'Hammelsprung', 'Eine Zählung, wenn das Ergebnis per Handzeichen unklar ist: Alle gehen hinaus und kommen durch die Tür für Ja, Nein oder Enthaltung zurück.'],
   ['koalitionsvertrag', 'Koalitionsvertrag', 'Die Vereinbarung der Regierungsparteien über das, was sie gemeinsam vorhaben. Er liegt neben den Wahlprogrammen in unserer Bibliothek.'],

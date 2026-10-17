@@ -103,7 +103,8 @@ function entriesOf(item, summaries) {
   const parts = item.parts || [];
   return parts.map((part) => {
     const nummer = (part.drucksachen || [])[0] || (parts.length === 1 && item.drucksachen[0] ? item.drucksachen[0].nummer : '');
-    return { part, nummer, s: (nummer && summaries.get(nummer)) || null };
+    const report = part.report && part.report !== nummer ? { nummer: part.report, s: summaries.get(part.report) || null } : null;
+    return { part, nummer, s: (nummer && summaries.get(nummer)) || null, report };
   });
 }
 
@@ -154,13 +155,29 @@ function teaser(item, entries, main) {
   }`;
 }
 
+// After a first reading: the committees the bill goes to.
+const referral = (part) =>
+  part.referral ? html`<p class="agenda-referral"><strong>Geht zur Beratung an:</strong> ${part.referral}</p>` : '';
+
 // Inside: what it is about, at more length, marked as written by an AI.
 function about(item, main) {
-  if (!main || !main.s) return '';
+  if (!main || !main.s) return main ? referral(main.part) : '';
   return html`<div class="agenda-about">
     <p class="agenda-about-title">Worum es geht${gistMeta(main.part) ? html` <span class="meta">· ${gistMeta(main.part)}</span>` : ''}</p>
     <p>${main.s.summary}</p>
     <p class="meta">KI-Zusammenfassung der Drucksache ${drucksacheLink(item, main)} · kann Fehler enthalten, maßgeblich ist das Original</p>
+  </div>${referral(main.part)}`;
+}
+
+// What the committee made of it: its report, summarised. Only once the
+// committee is done – before the second and third reading.
+function committee(item, main) {
+  if (!main || !main.report || !main.report.s) return '';
+  const e = { nummer: main.report.nummer, s: main.report.s };
+  return html`<div class="agenda-about agenda-committee">
+    <p class="agenda-about-title">Aus dem Ausschuss</p>
+    <p>${e.s.summary}</p>
+    <p class="meta">KI-Zusammenfassung des Ausschussberichts ${drucksacheLink(item, e)} · <a href="${EXPLAINER_PATH}#gesetz">Was ein Ausschuss macht</a></p>
   </div>`;
 }
 
@@ -175,6 +192,8 @@ function together(item, entries, main) {
       (e) => html`<li>
         ${AGENDA_PART_LABEL[e.part.kind] ? html`<span class="pill">${AGENDA_PART_LABEL[e.part.kind]}</span> ` : ''}<strong>${e.part.title || truncate(e.part.text.replace(/^[a-z]{1,2}\)\s*/, ''), 160)}</strong>${gistMeta(e.part) ? html` <span class="meta">${gistMeta(e.part)}</span>` : ''}
         ${e.s && e.s.kurz ? html`<span class="agenda-together-kurz">${e.s.kurz} <span class="meta">(KI-Zusammenfassung, Drucksache ${drucksacheLink(item, e)})</span></span>` : ''}
+        ${e.report && e.report.s && e.report.s.kurz ? html`<span class="agenda-together-kurz"><strong>Ausschuss:</strong> ${e.report.s.kurz} <span class="meta">(KI-Zusammenfassung, Drucksache ${drucksacheLink(item, e.report)})</span></span>` : ''}
+        ${e.part.referral ? html`<span class="agenda-together-kurz meta">Geht zur Beratung an: ${e.part.referral}</span>` : ''}
       </li>`,
     )}</ul>
   </div>`;
@@ -212,7 +231,7 @@ function item(entry, date, summaries, { quiet = false } = {}) {
         ${statusPill(entry)}
       </summary>
       <div class="agenda-body">
-        ${isBundle(entry) ? bundleList(entries) : html`${about(entry, main)}${together(entry, entries, main)}`}
+        ${isBundle(entry) ? bundleList(entries) : html`${about(entry, main)}${committee(entry, main)}${together(entry, entries, main)}`}
         ${statusDetail(entry)}
         ${wording(entry)}
         ${links(entry, { search: !isBundle(entry) })}
@@ -230,6 +249,7 @@ function restItem(entry, date, summaries) {
     ${entry.status ? html` <span class="meta">(${entry.status})</span>` : ''}
     ${entry.link ? html` <a class="meta" href="${entry.link}" target="_blank" rel="noopener">Beim Bundestag ↗</a>` : ''}
     ${main && main.s && main.s.kurz ? html`<p class="agenda-rest-about">${main.s.kurz} <span class="meta">(KI-Zusammenfassung, Drucksache ${drucksacheLink(entry, main)})</span></p>` : ''}
+    ${main && main.part.referral ? html`<p class="agenda-rest-about meta">Geht zur Beratung an: ${main.part.referral}</p>` : ''}
   </li>`;
 }
 

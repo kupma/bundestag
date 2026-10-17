@@ -138,7 +138,7 @@ export function samplePositions(date = '2026-09-24') {
 
 export const SAMPLE_PROTOCOL = `Präsidentin: Ich rufe den Tagesordnungspunkt 5 auf: Zweite und dritte Beratung des von der Bundesregierung eingebrachten Entwurfs eines Gesetzes zur Verlängerung der Mietpreisbremse Drucksache 21/1234 Beschlussempfehlung und Bericht des Rechtsausschusses Drucksache 21/1300. Das Wort hat die Abgeordnete Musterfrau. Mieten sind die soziale Frage unserer Zeit. (Beifall bei der SPD) Wir kommen zur Abstimmung über den Gesetzentwurf auf Drucksache 21/1234. Der Rechtsausschuss empfiehlt unter Buchstabe a seiner Beschlussempfehlung auf Drucksache 21/1300, den Gesetzentwurf in der Ausschussfassung anzunehmen. Wer stimmt dafür? – Wer stimmt dagegen? – Wer enthält sich? – Der Gesetzentwurf ist damit in zweiter Beratung mit den Stimmen der Fraktionen der CDU/CSU und SPD gegen die Stimmen der Fraktion der AfD bei Enthaltung der Fraktionen Bündnis 90/Die Grünen und Die Linke angenommen. Dritte Beratung und Schlussabstimmung. Der Gesetzentwurf ist mit dem gleichen Stimmenverhältnis wie zuvor angenommen. Ich rufe den Tagesordnungspunkt 6 auf: Antrag der Fraktion Die Linke Kostenloses Mittagessen an allen Schulen Drucksache 21/1400. Wir stimmen ab über den Antrag auf Drucksache 21/1400. Der Antrag ist mit den Stimmen der Fraktionen CDU/CSU, AfD und SPD gegen die Stimmen der Fraktion Die Linke bei Enthaltung der Fraktion Bündnis 90/Die Grünen abgelehnt.`;
 
-export function fakeDip({ positions = samplePositions(), protocol = SAMPLE_PROTOCOL } = {}) {
+export function fakeDip({ positions = samplePositions(), protocol = SAMPLE_PROTOCOL, types = {} } = {}) {
   const calls = [];
   return {
     calls,
@@ -157,7 +157,7 @@ export function fakeDip({ positions = samplePositions(), protocol = SAMPLE_PROTO
     },
     async drucksacheText(nummer) {
       calls.push(['drucksache', nummer]);
-      return { dokumentnummer: nummer, drucksachetyp: 'Gesetzentwurf', titel: 'Entwurf', text: 'A. Problem und Ziel: Mieten steigen. B. Lösung: Verlängerung.', fundstelle: { pdf_url: `https://dserver.bundestag.de/btd/21/${nummer.replace('/', '_')}.pdf` } };
+      return { dokumentnummer: nummer, drucksachetyp: types[nummer] || 'Gesetzentwurf', titel: 'Entwurf', text: 'A. Problem und Ziel: Mieten steigen. B. Lösung: Verlängerung.', fundstelle: { pdf_url: `https://dserver.bundestag.de/btd/21/${nummer.replace('/', '_')}.pdf` } };
     },
     async protocolText(date) {
       calls.push(['protocol', date]);
@@ -175,8 +175,8 @@ export function fakeClaude() {
   return {
     model: 'fake-model',
     calls,
-    async json({ prompt, schema, model, effort }) {
-      calls.push({ prompt, schema, model, effort });
+    async json({ system, prompt, schema, model, effort }) {
+      calls.push({ system, prompt, schema, model, effort });
       const usage = { input: 100, output: 50 };
       if (schema.required.includes('kurz')) {
         const nummer = (prompt.match(/<drucksache nummer="([^"]+)"/) || [])[1];
