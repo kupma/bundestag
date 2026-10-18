@@ -552,6 +552,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .scroll-hint::after { content: ''; display: block; width: 1.5px; height: 28px; margin: 8px auto 0; background: linear-gradient(var(--ink-3), transparent); }
 .js-plenum .step-card { opacity: 0.35; transform: translateY(18px); transition: opacity 0.6s ease, transform 0.6s ease; }
 .js-plenum .step.is-active .step-card, .js-plenum .step-hero .step-card { opacity: 1; transform: none; }
+html:not(.js-plenum) .step-debate { display: none; } /* the lines are drawn by static/landing.js */
 .landing-after { padding-top: 24px; }
 .faq details { border-bottom: 1px solid var(--line); padding: 14px 0; }
 .faq summary { cursor: pointer; font-weight: 600; list-style-position: outside; }
