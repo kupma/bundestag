@@ -118,6 +118,7 @@ export function homePage(view, { latest, articles, preparing = [], lastSyncAt = 
           <p class="step-no">1</p>
           <h2>630 Sitze, fünf Fraktionen</h2>
           <p>So sieht der Plenarsaal von oben aus. Von links nach rechts sitzen die Fraktionen Linke, Grüne, SPD, CDU/CSU und AfD, dazu ein Abgeordneter des SSW. In genau dieser Reihenfolge zeigen wir die Parteien überall auf der Seite – es ist die Ordnung des Parlaments, nicht unsere.</p>
+          <p class="step-debate">Die Linien dazwischen sind die Debatte: Jemand spricht, aus einer anderen Fraktion kommt die Antwort, und auf die wird wieder geantwortet – quer durch den Saal. Wähl einen Sitz, und er ergreift das Wort.</p>
         </div>
       </section>
       <section class="step" data-step="2">
