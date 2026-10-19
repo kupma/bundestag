@@ -17,7 +17,14 @@ const version = (file) => {
     return 'dev';
   }
 };
-export const ASSET_VERSION = { css: version('styles.css'), landingJs: version('landing.js'), articleJs: version('article.js'), og: version('og.png') };
+export const ASSET_VERSION = {
+  css: version('styles.css'),
+  landingJs: version('landing.js'),
+  articleJs: version('article.js'),
+  shareJs: version('share.js'),
+  shareIcons: version('share-icons.svg'),
+  og: version('og.png'),
+};
 
 export const shareImage = (config) => `${config.baseUrl}/static/og.png?v=${ASSET_VERSION.og}`;
 
@@ -48,15 +55,18 @@ export function organization(config) {
 
 export function layout(
   view,
-  { title, description = '', body, canonical, noindex = false, ogType = 'website', image = '', structured = [], scripts = [], bodyClass = '', published = '', modified = '' },
+  { title, description = '', body, canonical, ogPath = '', noindex = false, ogType = 'website', image = '', structured = [], scripts = [], bodyClass = '', published = '', modified = '' },
 ) {
   const { config, user, path: current = '/' } = view;
   const fullTitle = title ? `${title} – ${config.siteName}` : `${config.siteName} – ${TAGLINE}`;
   const desc = description || DEFAULT_DESCRIPTION;
   // Every indexable page names its one address; query strings (utm_…, ?ok=)
-  // never make a second one.
+  // never make a second one. A shared decision keeps the article as its
+  // canonical address but is its own card for the networks (og:url), since
+  // some of them fetch og:url for the preview.
   const canonicalPath = canonical ?? (noindex ? '' : current);
   const pageUrl = canonicalPath ? `${config.baseUrl}${canonicalPath}` : '';
+  const ogUrl = ogPath ? `${config.baseUrl}${ogPath}` : pageUrl;
   const img = image || shareImage(config);
   const active = (href) => (href === '/archiv' ? current.startsWith('/artikel') || current.startsWith('/archiv') : current.startsWith(href));
   const { seo, plausible } = config;
@@ -75,7 +85,7 @@ ${noindex ? html`<meta name="robots" content="noindex">` : html`<meta name="robo
 <meta property="og:type" content="${ogType}">
 <meta property="og:title" content="${title || `${config.siteName} – ${TAGLINE}`}">
 <meta property="og:description" content="${desc}">
-${pageUrl ? html`<meta property="og:url" content="${pageUrl}">` : ''}
+${ogUrl ? html`<meta property="og:url" content="${ogUrl}">` : ''}
 <meta property="og:image" content="${img}">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">

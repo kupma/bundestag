@@ -2,7 +2,7 @@
 
 What the Bundestag decides, explained.
 
-After every sitting day of the German Bundestag, this site publishes an article that goes through the day's decisions in plain language: what was decided, what it means, and how each parliamentary group voted. Every decision links to its documents (the Drucksachen and the plenary protocol). Readers can register, comment on the articles, and get each article by email.
+After every sitting day of the German Bundestag, this site publishes an article that goes through the day's decisions in plain language: what was decided, what it means, and how each parliamentary group voted. Every decision links to its documents (the Drucksachen and the plenary protocol). Readers can register, comment on the articles, get each article by email, and share an article or a single decision (see *Sharing* below).
 
 Earlier versions also compared every decision with the parties' election programmes. That is gone: a parliament that only ever did what the programmes say could not form coalitions or find compromises, so measuring decisions against them told readers less than it seemed to. That and everything else the site has dropped is in [GRAVEYARD.md](GRAVEYARD.md): what it was, when it went, and why. Look there before planning something new.
 
@@ -45,6 +45,14 @@ DIP API ──► decisions (grouped per Vorgang and day) ──► details: abs
 - **Where a bill goes next:** a first reading ends with the bill being referred to committees. The agenda names them ("Überweisungsvorschlag"); the preview lists them, with the lead committee ("(f)") written out as *federführend* and the others as *mitberatend*. The glossary on /bundestag-erklaert explains both.
 - **"Aus dem Ausschuss":** before the second and third reading, the agenda names the committee's report ("Beschlussempfehlung und Bericht"). That report is summarised too, with its own prompt: what the committee recommends, what it changed in the bill, whether it heard experts, and how the groups voted in it. A long report goes in as its opening plus the account of the deliberations ("Bericht der Abgeordneten"), which often only comes after a long table of changes. For a motion debated alongside, the preview shows the committee's recommendation in one line.
 - **"Worum es geht":** for the big items (bills, committee reports, motions, first readings; not the bundles of votes or referrals without debate) the preview shows a short summary of the Drucksache behind each part – one sentence (`kurz`) for the closed item, up to three for the open one – written by `claude-haiku-5-5` (`SUMMARY_MODEL`) from the opening of its text in DIP. For a bill that opening is the Vorblatt (problem, solution, alternatives, costs), the summary the Bundestag puts in front of every bill; the text is capped at 60,000 characters, so every request stays under the 100K-token price step of Haiku. Each Drucksache is summarised once and stored (`drucksache_summaries`); one that comes back later costs nothing. Raising `SUMMARY_VERSION` in `src/summaries.js` writes the stored ones again with the new prompt; until then the old ones stay on the page. The clock writes at most `SUMMARY_MAX_PER_RUN` (30) per tick; a text not yet in DIP is tried again after 12 hours, at most five times. The page marks them as AI summaries and links the original. Expect a few dollars a year. `SUMMARIES=off` switches them off; the admin page shows their token count.
+
+## Sharing
+
+Every article has a **Teilen** button in its header, and every decision one at the end of its fold. It opens a sheet as apps have it: what is being shared (date, headline, result), round buttons for *Link kopieren*, WhatsApp, Telegram, E-Mail, Bluesky, X and Facebook, *Mehr …* for the device's own share menu where the browser has one, and the address to copy. On phones it slides up from the bottom edge, on wide screens it is a window in the middle.
+
+- **A decision has its own address,** `/artikel/<date>/beschluss/<id>`. It shows the article with that decision open and scrolls to it, and gives messengers and networks a card of its own (title: the decision's headline and the day; description: its result and summary). Its canonical address is the article's, so search engines see one page. The number is the decision's id, not its place in the article, so a shared link stays right when a rewrite adds a decision; one a rewrite has dropped leads to the article.
+- **No widgets, no tracking.** The services are plain links, so nothing loads from them until someone taps one, and no service gets to know who reads what. Their marks ([Simple Icons](https://simpleicons.org), CC0) are drawn in the page's ink, not in brand colours (`static/share-icons.svg`).
+- **Works without JavaScript.** The sheet is a native `<details>`; a tap beside it closes it. `static/share.js` adds copying, *Mehr …*, a close button, Escape, and one sheet at a time.
 
 ## Design
 
@@ -121,9 +129,12 @@ src/views/           server-rendered pages (everything escaped by default)
 src/views/shapes.js  the logo and small marks
 src/views/agenda.js  the preview page (/vorschau) and its card on the home page
 src/views/explainer.js  the explainer (/bundestag-erklaert) and the "Was heißt das?" of each decision
+src/views/share.js   the share sheet of articles and decisions
 src/analytics.js     cookieless visitor statistics
 src/seo.js           robots.txt, sitemaps, manifest, IndexNow
 static/landing.js    the plenary hall animation on the landing page
+static/share.js      what the share sheet does with JavaScript: copy, the device's share menu, Escape
+static/share-icons.svg  the share sheet's icons
 static/fonts/        self-hosted fonts (SIL OFL)
 test/                node:test suites with PGlite and fake Claude/DIP/mail
 GRAVEYARD.md         features and approaches the site has dropped, and why

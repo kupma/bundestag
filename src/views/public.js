@@ -8,6 +8,7 @@ import { decisionContext, decisionTags, EXPLAINER_PATH } from './explainer.js';
 import { cls, PLENUM, RESULT_LABEL, VOTE_LABEL, VOTE_ORDER } from './labels.js';
 import { DEFAULT_DESCRIPTION, layout, notices, organization, shareImage, TAGLINE } from './layout.js';
 import { hallMark, themeIcon } from './shapes.js';
+import { shareSheet } from './share.js';
 
 const plural = (n, one, many) => `${n} ${Number(n) === 1 ? one : many}`;
 
@@ -283,12 +284,23 @@ function todo(stored) {
   </section>`;
 }
 
+// A decision has its own address for sharing (see articlePage). The number in
+// it is the decision's, not its place in the article, so a link stays right
+// when a rewrite adds a decision above it.
+const decisionPath = (article, d) => `/artikel/${article.slug}/beschluss/${d.decisionId}`;
+
+const day = (date) => formatDateDe(date, { weekday: false });
+const shareText = (headline, date) => `${headline} – Bundestag am ${day(date)}`;
+
 // Each decision is a fold: closed, it is one line with the result and who
 // voted how; open, what it means. Native <details>, so it works without
-// JavaScript; static/article.js opens the one a link points to.
-function decisionSection(d, i, date) {
+// JavaScript; static/article.js opens the one a link points to. The shared
+// one is open from the start.
+function decisionSection(d, i, { article, config, shared }) {
   const votes = votesOf(d);
-  return html`<details class="decision" id="beschluss-${i + 1}">
+  const date = article.sitting_date;
+  const isShared = shared != null && d.decisionId === shared;
+  return html`<details class="decision" id="beschluss-${i + 1}"${isShared ? html` open data-shared` : ''}>
     <summary>
       <h2>${d.headline}</h2>
       <span class="fold-icon" aria-hidden="true"></span>
@@ -305,6 +317,15 @@ function decisionSection(d, i, date) {
       ${votesBox(votes, d.votesNote)}
       ${todo(d.actions)}
       ${d.sources.length ? html`<p class="sources">Quellen: ${d.sources.map((s, j) => html`${j ? ' · ' : ''}<a href="${s.url}" target="_blank" rel="noopener">${s.label}</a>`)}</p>` : ''}
+      <div class="decision-share">${shareSheet({
+        url: d.decisionId ? `${config.baseUrl}${decisionPath(article, d)}` : `${config.baseUrl}/artikel/${article.slug}#beschluss-${i + 1}`,
+        text: shareText(d.headline, date),
+        heading: 'Beschluss teilen',
+        eyebrow: `Bundestag · ${day(date)}`,
+        headline: d.headline,
+        result: d.result,
+        context: d.headline,
+      })}</div>
     </div>
   </details>`;
 }
@@ -343,13 +364,19 @@ function commentsSection(view, { article, comments, commentError, commentDraft }
   </section>`;
 }
 
+// The article, or – under decisionPath, `shared` naming the decision – the
+// same article with that decision open and a preview card of its own for
+// messengers and networks. Both have the article as their canonical address.
 export function articlePage(view, data) {
-  const { article } = data;
+  const { article, shared = null } = data;
+  const { config } = view;
   const b = article.body || {};
   const decisions = b.decisions || [];
+  const sharedDecision = shared != null ? decisions.find((d) => d.decisionId === shared) : null;
   // An article from before the programme comparison was dropped: its
   // introduction talked about the programmes, so it waits for the rewrite.
   const intro = (b.version || 1) >= 2 ? b.intro || [] : [];
+  const url = `${config.baseUrl}/artikel/${article.slug}`;
   const body = html`<article>
     <header class="article-head">
       <p class="eyebrow">Sitzung des Bundestags vom ${formatDateDe(article.sitting_date)}</p>
@@ -358,6 +385,13 @@ export function articlePage(view, data) {
       <p class="meta">${plural(decisions.length, 'Beschluss', 'Beschlüsse')}${
         new Date(article.created_at) - new Date(article.published_at) > 30 * 60 * 1000 ? html` · aktualisiert ${formatDateTimeDe(article.created_at)}` : ''
       } · <a href="#kommentare">${plural(data.comments.length, 'Kommentar', 'Kommentare')}</a> · <a href="/ueber#methode">So entsteht dieser Artikel</a></p>
+      <div class="article-share">${shareSheet({
+        url,
+        text: shareText(article.title, article.sitting_date),
+        heading: 'Artikel teilen',
+        eyebrow: `Sitzung vom ${day(article.sitting_date)} · ${plural(decisions.length, 'Beschluss', 'Beschlüsse')}`,
+        headline: article.title,
+      })}</div>
     </header>
     ${article.status === 'hidden' ? html`<div class="notice error"><div>Dieser Artikel ist ausgeblendet und nur für Admins sichtbar.</div></div>` : ''}
     <div class="article-body">
@@ -366,7 +400,7 @@ export function articlePage(view, data) {
       ${decisions.length
         ? html`<div class="decisions-head"><h2 class="section-title">Die Beschlüsse im Einzelnen</h2><button type="button" class="link fold-all" hidden>Alle aufklappen</button></div>`
         : ''}
-      ${decisions.map((d, i) => decisionSection(d, i, article.sitting_date))}
+      ${decisions.map((d, i) => decisionSection(d, i, { article, config, shared }))}
       ${(b.others || []).length
         ? html`<section class="others"><h2>Weitere Beschlüsse des Tages</h2><ul>${b.others.map(
             (o) => html`<li>${o.title} <span class="meta">– ${o.tenor || RESULT_LABEL[o.outcome] || o.outcome}</span></li>`,
@@ -378,19 +412,20 @@ export function articlePage(view, data) {
     </div>
   </article>
   ${commentsSection(view, data)}`;
-  const { config } = view;
-  const url = `${config.baseUrl}/artikel/${article.slug}`;
   const published = new Date(article.published_at).toISOString();
   const modified = new Date(Math.max(new Date(article.created_at), new Date(article.published_at))).toISOString();
-  const day = formatDateDe(article.sitting_date, { weekday: false });
+  const sittingDay = day(article.sitting_date);
   return layout(view, {
     // The date belongs in the title: people search for "Bundestag 25. September".
-    title: `${article.title} – Bundestag am ${day}`,
-    description: truncate(article.lede, 200),
+    title: shareText(sharedDecision ? sharedDecision.headline : article.title, article.sitting_date),
+    description: sharedDecision
+      ? truncate(`${RESULT_LABEL[sharedDecision.result] || 'Beschlossen'} im Bundestag am ${sittingDay}. ${sharedDecision.summary}`, 200)
+      : truncate(article.lede, 200),
     body,
     canonical: `/artikel/${article.slug}`,
+    ogPath: sharedDecision ? decisionPath(article, sharedDecision) : '',
     ogType: 'article',
-    scripts: ['article'],
+    scripts: ['article', 'share'],
     published,
     modified,
     structured: [
@@ -422,7 +457,7 @@ export function articlePage(view, data) {
             itemListElement: [
               { '@type': 'ListItem', position: 1, name: 'Start', item: `${config.baseUrl}/` },
               { '@type': 'ListItem', position: 2, name: 'Sitzungstage', item: `${config.baseUrl}/archiv` },
-              { '@type': 'ListItem', position: 3, name: `Sitzung vom ${day}`, item: url },
+              { '@type': 'ListItem', position: 3, name: `Sitzung vom ${sittingDay}`, item: url },
             ],
           },
         ],

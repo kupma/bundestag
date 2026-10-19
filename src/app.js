@@ -275,6 +275,16 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
     c.html(articlePage(c.view, { article, comments: await loadComments(article.id) }));
   });
 
+  // A shared decision: the article with that decision open. A decision a
+  // rewrite has dropped leads to the article.
+  route('GET', '/artikel/:slug/beschluss/:id', async (c) => {
+    const article = await loadArticle(c.params.slug, c.user);
+    if (!article) throw new HttpError(404, 'Diesen Artikel gibt es nicht.');
+    const id = Number(c.params.id) || 0;
+    if (!((article.body || {}).decisions || []).some((d) => d.decisionId === id)) return c.redirect(`/artikel/${article.slug}`, 302);
+    c.html(articlePage(c.view, { article, comments: await loadComments(article.id), shared: id }));
+  });
+
   route('POST', '/artikel/:slug/kommentare', async (c) => {
     if (!requireUser(c)) return;
     const article = await loadArticle(c.params.slug, c.user);
