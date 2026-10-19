@@ -332,6 +332,10 @@ describe('the website', () => {
     assert.match(page.text, /Sitzungstage/);
     assert.match(page.text, /PGlite/);
     assert.doesNotMatch(page.text, /Bibliothek|Voyage/);
+    assert.match(page.text, /Geht sonntags ab 8 Uhr/);
+    assert.doesNotMatch(page.text, /\/versenden"/, 'no letter per article any more');
+    assert.equal((await admin.post('/admin/newsletter', {})).status, 303);
+    await app.handler.idle();
 
     assert.equal((await admin.post('/admin/artikel', { date: 'gestern' })).status, 400);
 

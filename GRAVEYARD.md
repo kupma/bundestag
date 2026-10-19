@@ -8,6 +8,7 @@ When a change removes a feature or replaces an approach, add an entry in the sam
 
 | Buried | What | Lived | Why, in one line |
 |---|---|---|---|
+| 2026-10-19 | [A letter after every sitting day](#a-letter-after-every-sitting-day) | 24 days | one letter per sitting week, on Sundays, instead |
 | 2026-10-18 | [Landing page: a camera that jumped](#landing-page-a-camera-that-jumped) | 22 days | cards hid seats, and the hall showed no debate |
 | 2026-10-17 | [Comparing decisions with the election programmes](#comparing-decisions-with-the-election-programmes) | 22 days | coalitions and compromises make programmes a poor yardstick |
 | 2026-10-17 | [The programme library](#the-programme-library) | 22 days | it only served the comparison |
@@ -24,6 +25,16 @@ When a change removes a feature or replaces an approach, add an entry in the sam
 | 2026-09-25 | [The static prototype](#the-static-prototype) | 3 hours | sample data, and a score that said nothing |
 
 ---
+
+### A letter after every sitting day
+
+*2026-09-25 (`e3e829e`) – 2026-10-19 ("Newsletter: one letter per sitting week, on Sundays") · 24 days*
+
+- **What it was.** Every article went out by email as soon as it was written, usually the morning after its sitting day: title, lede, common ground, each decision with its summary, and up to three suggestions. Letters went out between 06:00 and 21:00 Berlin time and only for sitting days of the last three days (`MAIL_MAX_AGE_DAYS`). Admins could send an article by hand (*jetzt versenden* in the article list), and `npm run generate -- <date> --mail` did the same from a shell.
+- **Why it went.** The operator asked for one email per sitting week, always on Sundays. A sitting week meant up to three letters in three days, and a letter could go out before the plenary protocol, so the article it linked to did not yet show how the groups voted.
+- **What took its place.** On Sundays from 08:00 (`NEWSLETTER_HOUR`), one letter for the week that ends that day: each sitting day with its title, lede, common ground and decisions as headline and result (the summaries stay on the site), and at most three suggestions for the whole week. Weeks without a sitting send nothing. If the clock missed a Sunday, the admin area offers to send the latest week by hand.
+- **Left behind.** The table `email_deliveries`, no longer written. `articles.mailed_at` now means "went out in a weekly letter".
+- **Before you try again.** If readers want news faster than weekly, let each of them choose, rather than switching everyone back to three letters a week.
 
 ### Landing page: a camera that jumped
 

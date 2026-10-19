@@ -1,4 +1,5 @@
 import { html } from '../html.js';
+import { formatRangeDe } from '../newsletter.js';
 import { formatDateDe, formatDateTimeDe, truncate } from '../text.js';
 import { layout, notices } from './layout.js';
 
@@ -33,7 +34,7 @@ export function adminPage(view, d) {
   <section class="admin-block">
     <h2>Aktionen</h2>
     <div class="admin-actions">
-      <form method="post" action="/admin/tick"><button type="submit">Jetzt aktualisieren</button><p class="meta">Holt neue Beschlüsse aus DIP und die Tagesordnung der nächsten Sitzungstage, schreibt fällige Artikel, verschickt den Newsletter.</p></form>
+      <form method="post" action="/admin/tick"><button type="submit">Jetzt aktualisieren</button><p class="meta">Holt neue Beschlüsse aus DIP und die Tagesordnung der nächsten Sitzungstage, schreibt fällige Artikel, verschickt sonntags den Newsletter.</p></form>
       <form method="post" action="/admin/artikel" class="stack">
         <label for="date">Artikel für Sitzungstag erzeugen</label>
         <input id="date" name="date" type="date" required value="${d.suggestedDate || ''}">
@@ -41,6 +42,14 @@ export function adminPage(view, d) {
         <button type="submit">Erzeugen</button>
         <p class="meta">Läuft im Hintergrund (einige Minuten); das Ergebnis steht unten unter „Protokoll“.</p>
       </form>
+      <div class="stack">
+        <p><strong>Newsletter</strong></p>
+        <p class="meta">Geht sonntags ab ${d.letter.hour} Uhr an alle bestätigten Abos: eine E-Mail mit den Sitzungstagen der Woche. Wochen ohne Sitzung bleiben still.</p>
+        ${d.letter.due
+          ? html`<form method="post" action="/admin/newsletter"><button type="submit" class="secondary">Woche vom ${formatRangeDe(d.letter.from, d.letter.to)} jetzt versenden</button></form>
+            <p class="meta">Diese Woche hat Artikel, die noch nicht verschickt wurden.</p>`
+          : ''}
+      </div>
     </div>
   </section>
 
@@ -65,7 +74,6 @@ export function adminPage(view, d) {
             <td class="meta">${a.usage ? `${a.usage.calls} Aufrufe${a.usage.runs > 1 ? ` in ${a.usage.runs} Fassungen` : ''}, ${Math.round((a.usage.input || 0) / 1000)}k/${Math.round((a.usage.output || 0) / 1000)}k Token` : ''}</td>
             <td>
               <form method="post" action="/admin/artikel/${a.id}/${a.status === 'published' ? 'ausblenden' : 'einblenden'}" class="inline"><button class="link" type="submit">${a.status === 'published' ? 'ausblenden' : 'einblenden'}</button></form>
-              ${!a.mailed_at && a.status === 'published' ? html`<form method="post" action="/admin/artikel/${a.id}/versenden" class="inline"><button class="link" type="submit">jetzt versenden</button></form>` : ''}
             </td>
           </tr>`,
         )}</tbody></table>`
