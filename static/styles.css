@@ -541,6 +541,9 @@ th { color: var(--ink-3); font-weight: 600; }
 .jobs pre { margin: 0; white-space: pre-wrap; font-size: 0.8rem; max-height: 12em; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .jobs tr.failed td { background: var(--stone-1); }
 .jobs tr.failed td:first-child::before { content: '! '; font-weight: 800; }
+.slides { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin: 20px 0 24px; }
+.slides img { display: block; width: 100%; height: auto; border-radius: var(--r-sm); box-shadow: var(--shadow); }
+.caption { margin: 0; white-space: pre-wrap; font: 400 0.95rem/1.6 var(--text); }
 .admin-comments { list-style: none; padding: 0; }
 .admin-comments li { border-bottom: 1px solid var(--line); padding: 10px 0; }
 .admin-comments p { margin: 2px 0; }

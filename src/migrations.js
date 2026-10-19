@@ -214,4 +214,26 @@ alter table drucksache_summaries add column kurz text not null default '';
 alter table drucksache_summaries add column version int not null default 1;
 `,
   },
+  {
+    id: 7,
+    sql: `
+-- Instagram (src/instagram.js): when an article went out as a carousel, and
+-- its address there. Set just before it goes out, so it never goes twice.
+alter table articles add column instagram_at timestamptz;
+alter table articles add column instagram_url text not null default '';
+
+-- The access token, one row. It lives 60 days and the clock renews it; seed
+-- is a hash of the INSTAGRAM_ACCESS_TOKEN it descends from, so a new token
+-- set by hand replaces it.
+create table instagram_token (
+  id int primary key check (id = 1),
+  seed text not null,
+  token text not null,
+  username text not null default '',
+  expires_at timestamptz,
+  renewed_at timestamptz,
+  tried_at timestamptz
+);
+`,
+  },
 ];

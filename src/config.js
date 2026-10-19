@@ -55,6 +55,13 @@ export function loadConfig(env = process.env) {
     summaryMaxPerRun: int(env.SUMMARY_MAX_PER_RUN, 30),
 
 
+    // Every article as an Instagram carousel, once its votes are known: a
+    // long-lived token of the Instagram API with Instagram Login. The clock
+    // renews it; without it nothing is posted.
+    instagram: {
+      accessToken: (env.INSTAGRAM_ACCESS_TOKEN || '').trim(),
+    },
+
     mail: {
       apiKey: (env.MAIL_API_KEY || '').trim(),
       from: (env.MAIL_FROM || '').trim(),

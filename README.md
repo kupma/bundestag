@@ -2,7 +2,7 @@
 
 What the Bundestag decides, explained.
 
-After every sitting day of the German Bundestag, this site publishes an article that goes through the day's decisions in plain language: what was decided, what it means, and how each parliamentary group voted. Every decision links to its documents (the Drucksachen and the plenary protocol). Readers can register, comment on the articles, get each article by email, and share an article or a single decision (see *Sharing* below).
+After every sitting day of the German Bundestag, this site publishes an article that goes through the day's decisions in plain language: what was decided, what it means, and how each parliamentary group voted. Every decision links to its documents (the Drucksachen and the plenary protocol). Readers can register, comment on the articles, get each article by email, and share an article or a single decision (see *Sharing* below). Each article also goes out on Instagram as a carousel once the votes are known (see *Instagram* below).
 
 Earlier versions also compared every decision with the parties' election programmes. That is gone: a parliament that only ever did what the programmes say could not form coalitions or find compromises, so measuring decisions against them told readers less than it seemed to. That and everything else the site has dropped is in [GRAVEYARD.md](GRAVEYARD.md): what it was, when it went, and why. Look there before planning something new.
 
@@ -54,6 +54,18 @@ Every article has a **Teilen** button in its header, and every decision one at t
 - **No widgets, no tracking.** The services are plain links, so nothing loads from them until someone taps one, and no service gets to know who reads what. Their marks ([Simple Icons](https://simpleicons.org), CC0) are drawn in the page's ink, not in brand colours (`static/share-icons.svg`).
 - **Works without JavaScript.** The sheet is a native `<details>`; a tap beside it closes it. `static/share.js` adds copying, *Mehr …*, a close button, Escape, and one sheet at a time.
 
+## Instagram
+
+With `INSTAGRAM_ACCESS_TOKEN` set, every article also goes out on Instagram as a carousel: a cover with the day's title and lede, one picture per decision (headline, result, summary, and each group's vote in seat order, told apart by shape as on the site), and a last picture with the *Gemeinsamkeiten* and the article's address. The caption has the title, the lede, the list of decisions, "Link in der Bio" (links in a caption cannot be tapped), a note that the texts are written by an AI, and `#Bundestag #Politik`.
+
+- **When:** once the plenary protocol is in and the article has been rewritten with the votes – usually a day or two after the sitting, so no picture ever shows a vote as *unbekannt*. At most a week after the sitting, one article per tick, between 06:00 and 21:00 Berlin time. An article goes out once: a later rewrite is not posted again. It is marked just before it is published, so a run that dies halfway never posts it twice; if Instagram does not answer the final request at all, the article is not tried again (better a missing post than a double one). Three failures in 24 hours pause an article for the day; each step is in the admin's *Protokoll*.
+- **The pictures** (`src/views/slides.js`) are SVG in the site's palette and fonts, rendered with [resvg](https://github.com/thx/resvg-js) and saved as JPEG at 1080 × 1350, the tallest format the feed shows (Instagram takes JPEG only). Long texts get a smaller size, then end in "…"; a long compound is broken at its joining s ("Beschaffungs-|beschleunigungsgesetz"). A carousel holds at most ten pictures, so at most eight decisions. The pictures are served at `/instagram/<date>/<n>.jpg`, where Instagram fetches them – `BASE_URL` has to be the site's public https address. Admins see every carousel and its caption, before and after it goes out, under *Bilder* in the admin's article table.
+- **Fonts:** resvg draws a variable font only in its default cut, so `static/fonts` also holds static TrueType cuts of the site's fonts, made with fontTools' instancer: Fraunces at wght 560 and SOFT 100 (the headings' settings), Figtree at 400 and 600, each with its own name and weight class so resvg tells them apart. They are not served to browsers.
+- **Setting it up:**
+  1. A professional Instagram account (Business or Creator) for the site. A business profile in Germany needs an *Impressum* too: link `/impressum` in its bio.
+  2. A Meta app on [developers.facebook.com](https://developers.facebook.com) with the product *Instagram*, *API setup with Instagram login*. Under *Generate access tokens*, add the account and log in with it; the token comes with the permissions `instagram_business_basic` and `instagram_business_content_publish`. An app that only posts to accounts with a role in it needs no App Review.
+  3. Copy the token (a long-lived one, 60 days) into `INSTAGRAM_ACCESS_TOKEN`. The clock renews it every week, also through the recess, and keeps the renewed one in the database; the admin page shows until when it is valid. A new token set by hand replaces the stored one.
+
 ## Design
 
 - **Politically neutral colour.** Warm paper and stone tones with a charcoal ink. Almost every hue is claimed by some party in Germany (black, red, green, yellow, blue, purple, magenta, orange, turquoise), so the site uses none of them. Party colours appear only as a small identification dot, the same size for every party. The groups are listed in the order they sit in the plenary hall (left to right as seen from the President, `src/plenum.js`).
@@ -78,6 +90,7 @@ Every article has a **Teilen** button in its header, and every decision one at t
    | `GOOGLE_SITE_VERIFICATION`, `BING_SITE_VERIFICATION` | optional, the `content` value of the verification meta tag from Google Search Console / Bing Webmaster Tools |
    | `INDEXNOW_KEY` | optional, any 8–128 letters, digits or dashes; new articles are then announced to Bing & Co. at once via IndexNow |
    | `PLAUSIBLE_DOMAIN` | optional, a second, external statistics view with [Plausible](https://plausible.io) (cookieless). The built-in statistics need nothing |
+   | `INSTAGRAM_ACCESS_TOKEN` | optional, posts every article to Instagram as a carousel (see *Instagram*) |
 4. **Networking → Generate Domain.** `BASE_URL` defaults to that domain. **Custom domain:** add it under *Networking → Custom Domain*, create the CNAME (and TXT) record Railway shows at your registrar, then set `BASE_URL=https://your-domain.de`. From then on the Railway address and `www.` answer with a permanent redirect to it, so search engines index every page once.
 5. Open the site, **register with an address from `ADMIN_EMAILS`**, and go to **/admin**.
 6. **Check DIP:** in the Railway shell (or locally with the key), run `npm run dip:probe -- 2026-09-24 --raw` for a recent sitting day. Then press *Jetzt aktualisieren* in the admin area. To write an article right away, use *Artikel für Sitzungstag erzeugen*.
@@ -130,12 +143,14 @@ src/views/shapes.js  the logo and small marks
 src/views/agenda.js  the preview page (/vorschau) and its card on the home page
 src/views/explainer.js  the explainer (/bundestag-erklaert) and the "Was heißt das?" of each decision
 src/views/share.js   the share sheet of articles and decisions
+src/views/slides.js  an article as Instagram pictures
+src/instagram.js     posting to Instagram, and keeping its token alive
 src/analytics.js     cookieless visitor statistics
 src/seo.js           robots.txt, sitemaps, manifest, IndexNow
 static/landing.js    the plenary hall animation on the landing page
 static/share.js      what the share sheet does with JavaScript: copy, the device's share menu, Escape
 static/share-icons.svg  the share sheet's icons
-static/fonts/        self-hosted fonts (SIL OFL)
+static/fonts/        self-hosted fonts (SIL OFL), and static cuts of them for the Instagram pictures
 test/                node:test suites with PGlite and fake Claude/DIP/mail
 GRAVEYARD.md         features and approaches the site has dropped, and why
 ```
@@ -145,4 +160,5 @@ GRAVEYARD.md         features and approaches the site has dropped, and why
 - **Cost:** 1 + N Claude calls per sitting day, where N is at most 8 decisions. Expect well under a dollar per article with `claude-sonnet-5-5` (the analyses at effort `high` are most of it, their output mostly thinking). A rewrite sends only what changed to Claude again: an analysis whose inputs (the decision, its documents and vote sentences, the prompt) are unchanged is kept, and so are title and introduction if nothing they summarise changed. Once the protocol arrives, every decision is analysed again, since the votes are new input for all of them. The admin table shows the tokens of all versions of an article together; *neu schreiben* in the admin area writes everything anew. The Bundestag sits on roughly 60–70 days a year.
 - **Older articles:** an article written by an earlier version of the pipeline (`ARTICLE_VERSION` in `src/articles.js`; version 1 compared decisions with the election programmes) is written anew by the clock, newest first, one per tick and only when nothing more urgent is due. Each costs about as much as a new article, and the newsletter is not sent again. Until then it is shown without the programme comparison. The tables of the old library (`programs`, `program_chunks`, `article_citations`) are left in the database, unused.
 - **DIP's response format** is implemented from its documentation and hasn't yet been exercised against the live API from this codebase. `npm run dip:probe` is the quickest way to confirm, and `src/dip.js` is the only place to adjust if a field is named differently.
+- **Instagram** is implemented from Meta's documentation of the Instagram API with Instagram Login (Graph API v26.0) and tested against a fake; the first real post is the check. `src/instagram.js` is the only place to adjust, and the admin's *Protokoll* shows Instagram's own error messages.
 - **Comments** need a confirmed email address when mail is configured. Admins can delete any comment, users their own. Account deletion removes the user's comments.

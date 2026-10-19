@@ -3,7 +3,8 @@
 // of the coming sitting days (every two hours) with a short summary of each
 // new Drucksache on it, write the
 // article for one finished sitting day (or refresh one that DIP has added to
-// since), and send the newsletter for articles that have not gone out yet. Each step is idempotent,
+// since), send the newsletter for articles that have not gone out yet, and
+// post one to Instagram once its votes are known. Each step is idempotent,
 // so a tick that runs twice, late, or on two replicas at once does no harm;
 // the advisory lock just saves the second one the work.
 
@@ -11,6 +12,7 @@ import { syncAgenda } from './agenda.js';
 import { pruneTraffic } from './analytics.js';
 import { generateArticle, outdatedArticles, pendingDates, refreshCandidates } from './articles.js';
 import { syncDecisions } from './dip.js';
+import { pendingPosts, postArticle, renewalDue, renewToken } from './instagram.js';
 import { recentFailures, runJob } from './jobs.js';
 import { mailArticle } from './newsletter.js';
 import { pingIndexNow } from './seo.js';
@@ -30,7 +32,7 @@ const state = { lastSync: 0, lastAgenda: 0 };
 export async function tick(ctx, { now = new Date(), forceSync = false } = {}) {
   const { db, config } = ctx;
   const outcome = await db.tryLock(TICK_LOCK, async () => {
-    const report = { sync: null, agenda: null, summaries: null, generated: [], refreshed: [], mailed: [], notes: [] };
+    const report = { sync: null, agenda: null, summaries: null, generated: [], refreshed: [], mailed: [], posted: [], notes: [] };
     const today = berlinDate(now);
     const hour = berlinHour(now);
     // Until the first article exists, look back far enough to find the most
@@ -155,6 +157,28 @@ export async function tick(ctx, { now = new Date(), forceSync = false } = {}) {
           report.mailed.push({ date: a.sitting_date, ...r });
         } catch (err) {
           report.notes.push(`Newsletter ${a.sitting_date}: ${err.message}`);
+        }
+      }
+    }
+
+    // 3b. Instagram: keep the token alive, at any hour and in the recess too;
+    // then, in waking hours, one article as a carousel once its votes are in.
+    if (ctx.instagram) {
+      try {
+        if (await renewalDue(ctx, { now })) await runJob(db, 'instagram-token', (log) => renewToken(ctx, { now, log }));
+      } catch (err) {
+        report.notes.push(`Instagram-Token: ${err.message}`);
+      }
+      if (hour >= config.earliestHour && hour < 21) {
+        for (const a of await pendingPosts(db, { today })) {
+          if ((await recentFailures(db, `instagram:${a.sitting_date}`, 24)) >= MAX_FAILURES_PER_DAY) continue;
+          try {
+            const r = await runJob(db, `instagram:${a.sitting_date}`, (log) => postArticle(ctx, a.id, { log }));
+            report.posted.push({ date: a.sitting_date, ...r });
+          } catch (err) {
+            report.notes.push(`Instagram ${a.sitting_date}: ${err.message}`);
+          }
+          break;
         }
       }
     }

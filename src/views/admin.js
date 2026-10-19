@@ -17,11 +17,17 @@ export function adminPage(view, d) {
       ${yes(d.status.claude, `Claude (${config.claudeModel})`)}
       ${yes(d.status.summaries, `Vorschau-Zusammenfassungen (${config.summaryModel})`)}
       ${yes(d.status.mail, 'E-Mail-Versand')}
+      ${yes(!!d.status.instagram, d.status.instagram && d.status.instagram.username ? `Instagram (@${d.status.instagram.username})` : 'Instagram')}
       ${yes(d.status.database === 'postgres', d.status.database === 'postgres' ? 'Postgres' : 'PGlite (nur lokal!)')}
       ${yes(d.status.scheduler, 'Zeitplan')}
     </p>
     <p>${d.counts.users} Konten · ${d.counts.subscribers} Newsletter-Abos (bestätigt) · ${d.counts.articles} Artikel · ${d.counts.comments} Kommentare</p>
     <p class="meta">Vorschau: ${d.counts.summaries} Drucksachen zusammengefasst, zusammen ${d.counts.summary_input.toLocaleString('de-DE')} Token rein und ${d.counts.summary_output.toLocaleString('de-DE')} raus.</p>
+    ${d.status.instagram
+      ? html`<p class="meta">Instagram: ${d.status.instagram.expires_at
+          ? `Token gültig bis ${formatDateTimeDe(d.status.instagram.expires_at)}, wird wöchentlich erneuert.`
+          : 'Token noch nicht erneuert – das geschieht von selbst, sobald er einen Tag alt ist.'}</p>`
+      : ''}
   </section>
 
   <section class="admin-block">
@@ -33,7 +39,7 @@ export function adminPage(view, d) {
   <section class="admin-block">
     <h2>Aktionen</h2>
     <div class="admin-actions">
-      <form method="post" action="/admin/tick"><button type="submit">Jetzt aktualisieren</button><p class="meta">Holt neue Beschlüsse aus DIP und die Tagesordnung der nächsten Sitzungstage, schreibt fällige Artikel, verschickt den Newsletter.</p></form>
+      <form method="post" action="/admin/tick"><button type="submit">Jetzt aktualisieren</button><p class="meta">Holt neue Beschlüsse aus DIP und die Tagesordnung der nächsten Sitzungstage, schreibt fällige Artikel, verschickt den Newsletter und postet auf Instagram.</p></form>
       <form method="post" action="/admin/artikel" class="stack">
         <label for="date">Artikel für Sitzungstag erzeugen</label>
         <input id="date" name="date" type="date" required value="${d.suggestedDate || ''}">
@@ -56,12 +62,17 @@ export function adminPage(view, d) {
   <section class="admin-block">
     <h2>Artikel</h2>
     ${d.articles.length
-      ? html`<table><thead><tr><th>Sitzungstag</th><th>Titel</th><th>Status</th><th>Newsletter</th><th>Kosten</th><th></th></tr></thead><tbody>${d.articles.map(
+      ? html`<table><thead><tr><th>Sitzungstag</th><th>Titel</th><th>Status</th><th>Newsletter</th><th>Instagram</th><th>Kosten</th><th></th></tr></thead><tbody>${d.articles.map(
           (a) => html`<tr>
             <td>${formatDateDe(a.sitting_date, { weekday: false })}</td>
             <td><a href="/artikel/${a.slug}">${truncate(a.title, 70)}</a></td>
             <td>${a.status === 'published' ? 'sichtbar' : html`<span class="chip warn">ausgeblendet</span>`}</td>
             <td>${a.mailed_at ? formatDateTimeDe(a.mailed_at) : '–'}</td>
+            <td>${a.instagram_url
+              ? html`<a href="${a.instagram_url}" target="_blank" rel="noopener">${formatDateTimeDe(a.instagram_at)} ↗</a>`
+              : a.instagram_at
+                ? formatDateTimeDe(a.instagram_at)
+                : '–'} · <a href="/admin/instagram/${a.slug}">Bilder</a></td>
             <td class="meta">${a.usage ? `${a.usage.calls} Aufrufe${a.usage.runs > 1 ? ` in ${a.usage.runs} Fassungen` : ''}, ${Math.round((a.usage.input || 0) / 1000)}k/${Math.round((a.usage.output || 0) / 1000)}k Token` : ''}</td>
             <td>
               <form method="post" action="/admin/artikel/${a.id}/${a.status === 'published' ? 'ausblenden' : 'einblenden'}" class="inline"><button class="link" type="submit">${a.status === 'published' ? 'ausblenden' : 'einblenden'}</button></form>
@@ -92,6 +103,25 @@ export function adminPage(view, d) {
       : html`<p class="meta">Noch nichts gelaufen.</p>`}
   </section>`;
   return layout(view, { title: 'Admin', body, noindex: true });
+}
+
+// --- Instagram ----------------------------------------------------------------------
+
+export function instagramPage(view, { article, pictures, caption }) {
+  const body = html`<p class="meta"><a href="/admin">← Admin</a></p>
+  <h1>Instagram: ${formatDateDe(article.sitting_date)}</h1>
+  <p>${article.instagram_url
+    ? html`Gepostet am ${formatDateTimeDe(article.instagram_at)}: <a href="${article.instagram_url}" target="_blank" rel="noopener">Beitrag ansehen ↗</a>`
+    : article.instagram_at
+      ? `Gepostet am ${formatDateTimeDe(article.instagram_at)}.`
+      : 'Noch nicht gepostet. Der Zeitplan postet den Artikel, sobald das Plenarprotokoll mit den Abstimmungen eingearbeitet ist – höchstens eine Woche nach der Sitzung.'}</p>
+  <div class="slides">${pictures.map((src, i) => html`<a href="${src}"><img src="${src}" alt="Bild ${i + 1} von ${pictures.length}" width="1080" height="1350" loading="lazy"></a>`)}</div>
+  <section class="admin-block">
+    <h2>Text unter den Bildern</h2>
+    <pre class="caption">${caption}</pre>
+    <p class="meta">${caption.length} von 2200 Zeichen.</p>
+  </section>`;
+  return layout(view, { title: 'Instagram', body, noindex: true });
 }
 
 // --- statistics -------------------------------------------------------------------

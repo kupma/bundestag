@@ -6,7 +6,8 @@
 import { raw } from '../html.js';
 
 // Three arcs, the rows of seats; open at the bottom, where the lectern is.
-const HALL = '<path d="M5 23a15 15 0 0 1 30 0"/><path d="M10.5 23a9.5 9.5 0 0 1 19 0"/><path d="M16 23a4 4 0 0 1 8 0"/>';
+// The Instagram pictures draw them too (views/slides.js).
+export const HALL = '<path d="M5 23a15 15 0 0 1 30 0"/><path d="M10.5 23a9.5 9.5 0 0 1 19 0"/><path d="M16 23a4 4 0 0 1 8 0"/>';
 
 export const logoMark = () => raw(`<svg class="logo-mark" viewBox="0 0 40 26" aria-hidden="true">${HALL}</svg>`);
 

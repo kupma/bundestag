@@ -31,6 +31,7 @@ import {
   verifyPassword,
 } from './auth.js';
 import { syncDecisions } from './dip.js';
+import { accessToken, captionOf, pictureUrl } from './instagram.js';
 import { runJob, recentJobs } from './jobs.js';
 import { mailArticle } from './newsletter.js';
 import { createLimiter } from './ratelimit.js';
@@ -49,10 +50,11 @@ import {
   unsubscribePage,
   verifyMail,
 } from './views/account.js';
-import { adminPage, statsPage } from './views/admin.js';
+import { adminPage, instagramPage, statsPage } from './views/admin.js';
 import { previewPage } from './views/agenda.js';
 import { EXPLAINER_PATH, explainerPage } from './views/explainer.js';
 import { aboutPage, archivePage, articlePage, errorPage, homePage, imprintPage, mitmachenPage, privacyPage, rssFeed } from './views/public.js';
+import { slideCount, slideImage } from './views/slides.js';
 
 const STATIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'static');
 const MIME = { '.webmanifest': 'application/manifest+json', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.txt': 'text/plain; charset=utf-8', '.woff2': 'font/woff2' };
@@ -320,6 +322,17 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
     c.redirect(fromAdmin ? '/admin?ok=geloescht' : `/artikel/${comment.slug}#kommentare`);
   });
 
+  // The pictures of an article's Instagram carousel, drawn on request:
+  // Instagram fetches them from here when the clock posts the article.
+  route('GET', '/instagram/:slug/:file', async (c) => {
+    const n = Number((/^(\d{1,2})\.jpg$/.exec(c.params.file) || [])[1]);
+    const article = n ? await loadArticle(c.params.slug, c.user) : null;
+    if (!article || n > slideCount(article)) throw new HttpError(404, 'Dieses Bild gibt es nicht.');
+    c.extraHeaders['Cache-Control'] = 'public, max-age=3600';
+    c.extraHeaders['X-Robots-Tag'] = 'noindex';
+    c.send(200, await slideImage(config, article, n), 'image/jpeg');
+  });
+
   // The election programmes and their passages were once a library here;
   // their addresses lead home now, for links and search engines that know them.
   for (const pattern of ['/programme', '/programme/:slug', '/stelle/:id']) route('GET', pattern, async (c) => c.redirect('/', 301));
@@ -536,7 +549,9 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
         (select count(*)::int from drucksache_summaries where summary <> '') as summaries,
         (select coalesce(sum((usage->>'input')::int), 0)::int from drucksache_summaries) as summary_input,
         (select coalesce(sum((usage->>'output')::int), 0)::int from drucksache_summaries) as summary_output`);
-    const { rows: articles } = await db.query('select id, slug, sitting_date, title, status, mailed_at, usage from articles order by sitting_date desc limit 30');
+    const { rows: articles } = await db.query(
+      'select id, slug, sitting_date, title, status, mailed_at, instagram_at, instagram_url, usage from articles order by sitting_date desc limit 30',
+    );
     const { rows: days } = await db.query(
       `select d.sitting_date, count(*)::int as n, count(*) filter (where d.importance >= 0)::int as in_depth, a.slug
          from decisions d left join articles a on a.sitting_date = d.sitting_date
@@ -557,6 +572,7 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
           claude: !!ctx.claude,
           summaries: !!ctx.claude && !!ctx.dip && config.summaries,
           mail: mailer.configured,
+          instagram: ctx.instagram ? await accessToken(ctx) : null,
           database: db.kind,
           scheduler: config.scheduler,
         },
@@ -574,6 +590,15 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
     if (!requireAdmin(c)) return;
     const days = [7, 30, 90, 365].includes(Number(c.query.get('tage'))) ? Number(c.query.get('tage')) : 30;
     c.html(statsPage(c.view, { days, report: await trafficReport(db, { days, today: berlinDate(new Date()) }) }));
+  });
+
+  // What an article looks like on Instagram, before or after it went out.
+  route('GET', '/admin/instagram/:slug', async (c) => {
+    if (!requireAdmin(c)) return;
+    const article = await loadArticle(c.params.slug, c.user);
+    if (!article) throw new HttpError(404, 'Diesen Artikel gibt es nicht.');
+    const pictures = Array.from({ length: slideCount(article) }, (_, i) => pictureUrl({ baseUrl: '' }, article, i + 1));
+    c.html(instagramPage(c.view, { article, pictures, caption: captionOf(config, article) }));
   });
 
   route('POST', '/admin/tick', async (c) => {
