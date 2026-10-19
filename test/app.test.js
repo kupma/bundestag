@@ -419,6 +419,11 @@ describe('the website', () => {
     assert.equal(page.status, 200);
     assert.match(page.text, /Google/);
     assert.match(page.text, /newsletter/);
+    // every day's numbers: on the bar (for hover, tap and keys) and in the table
+    assert.match(page.text, /data-visits="1 Besuch" data-views="2 Aufrufe"/);
+    assert.match(page.text, /Alle Tage als Tabelle/);
+    assert.match(page.text, /<script src="\/static\/stats\.js\?v=[0-9a-f]{10}" defer>/);
+    assert.equal((await admin.get('/static/stats.js')).status, 200);
     await app.handler.idle();
     assert.equal((await ctx.db.one('select count(*)::int as n from page_views')).n, 2, 'admins are not counted');
     assert.equal((await reader.get('/admin/statistik')).status, 303);
