@@ -180,6 +180,67 @@ describe('the website', () => {
     assert.match(res.text, /aria-current="page">Mitmachen</);
   });
 
+  test('an article and each of its decisions can be shared, also without JavaScript', async () => {
+    await generateArticleOnce();
+    const b = browser(app.base);
+    const page = await b.get('/artikel/2026-09-24');
+    assert.match(page.text, /<script src="\/static\/share\.js\?v=[0-9a-f]{10}" defer><\/script>/);
+    const article = await ctx.db.one(`select body from articles where slug = '2026-09-24'`);
+    const decisions = article.body.decisions;
+    const sheets = page.text.match(/<details class="share"/g) || [];
+    assert.equal(sheets.length, decisions.length + 1, 'one for the article, one per decision');
+
+    // the article: its own address, its title and the day
+    const articleUrl = 'http://localhost:3999/artikel/2026-09-24';
+    assert.match(page.text, new RegExp(`<details class="share" data-share-url="${articleUrl}" data-share-text="Mietpreisbremse bleibt bis 2029 – Bundestag am 24\\. September 2026">`));
+    // a decision: an address of its own, by the decision's number, not its place
+    const d = decisions[0];
+    const decisionUrl = `${articleUrl}/beschluss/${d.decisionId}`;
+    assert.match(page.text, new RegExp(`data-share-url="${decisionUrl}" data-share-text="${d.headline} – Bundestag am 24\\. September 2026"`));
+    assert.ok(page.text.includes(`href="https://wa.me/?text=${encodeURIComponent(`${d.headline} – Bundestag am 24. September 2026\n${decisionUrl}`)}" target="_blank" rel="noopener"`));
+    assert.ok(page.text.includes(`href="https://t.me/share/url?url=${encodeURIComponent(decisionUrl)}&amp;text=`));
+    assert.ok(page.text.includes(`href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(decisionUrl)}" target="_blank" rel="noopener"`));
+    assert.match(page.text, /href="mailto:\?subject=[^"]+&amp;body=[^"]+">/, 'mail opens in place, not in a tab');
+    assert.ok(page.text.includes(`<input class="share-url" type="text" value="${decisionUrl}" readonly`), 'the address to copy by hand');
+    // what needs a script waits for it
+    assert.match(page.text, /<li hidden><button type="button" class="share-target" data-share="copy">/);
+    assert.match(page.text, /<li hidden><button type="button" class="share-target" data-share="native">/);
+    assert.match(page.text, /<span class="visually-hidden">: Mietpreisbremse verlängert<\/span>/, 'screen readers hear which decision');
+    assert.equal((await b.get('/static/share.js')).status, 200);
+    const icons = await b.get('/static/share-icons.svg');
+    assert.equal(icons.headers.get('content-type'), 'image/svg+xml');
+    for (const id of ['teilen', 'link', 'mail', 'mehr', 'whatsapp', 'telegram', 'bluesky', 'x', 'facebook']) assert.match(icons.text, new RegExp(`<symbol id="${id}"`));
+    assert.doesNotMatch(page.text, /<script[^>]+src="https?:/, 'no outside script');
+  });
+
+  test('a shared decision opens in its article, with a preview of its own', async () => {
+    await generateArticleOnce();
+    const b = browser(app.base);
+    const { body } = await ctx.db.one(`select body from articles where slug = '2026-09-24'`);
+    const d = body.decisions[body.decisions.length - 1];
+    const res = await b.get(`/artikel/2026-09-24/beschluss/${d.decisionId}`);
+    assert.equal(res.status, 200);
+    const i = body.decisions.indexOf(d) + 1;
+    assert.match(res.text, new RegExp(`<details class="decision" id="beschluss-${i}" open data-shared>`));
+    assert.equal((res.text.match(/<details class="decision"[^>]* open/g) || []).length, 1, 'only that one is open');
+    assert.match(res.text, /<link rel="canonical" href="http:\/\/localhost:3999\/artikel\/2026-09-24">/, 'one page for search engines');
+    assert.match(res.text, new RegExp(`<meta property="og:url" content="http://localhost:3999/artikel/2026-09-24/beschluss/${d.decisionId}">`));
+    assert.match(res.text, new RegExp(`<meta property="og:title" content="${d.headline} – Bundestag am 24\\. September 2026">`));
+    assert.match(res.text, /<meta property="og:description" content="(Angenommen|Abgelehnt|Für erledigt erklärt|Beschlossen) im Bundestag am 24\. September 2026\. /);
+
+    // the article itself is unchanged: nothing open, its own card
+    const plain = await b.get('/artikel/2026-09-24');
+    assert.doesNotMatch(plain.text, /<details class="decision"[^>]* open/);
+    assert.match(plain.text, /<meta property="og:url" content="http:\/\/localhost:3999\/artikel\/2026-09-24">/);
+
+    // a decision a rewrite has dropped leads to the article; an unknown article is not found
+    const gone = await b.get('/artikel/2026-09-24/beschluss/999999');
+    assert.equal(gone.status, 302);
+    assert.equal(gone.location, '/artikel/2026-09-24');
+    assert.equal((await b.get('/artikel/2026-09-24/beschluss/abc')).status, 302);
+    assert.equal((await b.get(`/artikel/1999-01-01/beschluss/${d.decisionId}`)).status, 404);
+  });
+
   test('the old library addresses lead home, and nothing links to them', async () => {
     const b = browser(app.base);
     for (const path of ['/programme', '/programme/spd-wahlprogramm-2025?q=Mieter', '/stelle/42']) {

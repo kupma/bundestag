@@ -46,6 +46,8 @@
   --line: #e2dcd2;
   --on-ink: #f6f3ee;
   --shadow: 0 1px 2px rgba(43, 41, 38, 0.04), 0 10px 30px rgba(43, 41, 38, 0.06);
+  --shadow-lift: 0 2px 6px rgba(43, 41, 38, 0.08), 0 24px 60px rgba(43, 41, 38, 0.18);
+  --backdrop: rgba(43, 41, 38, 0.32);
   --display: 'Fraunces', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
   --text: 'Figtree', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --r-xl: 32px;
@@ -68,6 +70,8 @@
     --line: #3a3632;
     --on-ink: #1c1b19;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 10px 30px rgba(0, 0, 0, 0.25);
+    --shadow-lift: 0 2px 6px rgba(0, 0, 0, 0.3), 0 24px 60px rgba(0, 0, 0, 0.5);
+    --backdrop: rgba(0, 0, 0, 0.5);
   }
 }
 
@@ -98,6 +102,8 @@ img, svg { max-width: 100%; }
 .skip { position: absolute; left: -999px; }
 .skip:focus { left: 16px; top: 16px; background: var(--surface); padding: 10px 14px; border-radius: var(--r-sm); z-index: 10; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* what a script shows only once it runs stays hidden, whatever display it gets */
+[hidden] { display: none !important; }
 
 /* --- marks: the hall, and a decision still open ------------------------------- */
 .logo-mark, .hall-mark { width: 40px; height: 26px; color: var(--ink); flex: none; }
@@ -299,6 +305,66 @@ form.inline { display: inline; }
 .todo li p { margin: 0; }
 .todo .pill { justify-self: start; background: var(--surface); }
 .todo a { font-weight: 600; font-size: 0.92rem; }
+
+.decision-share { margin-top: 16px; }
+.article-share { margin-top: 2px; }
+
+/* --- sharing (src/views/share.js, static/share.js) ------------------------------------
+ * A small "Teilen" pill opens a sheet: a window in the middle on wide screens,
+ * a sheet from the bottom edge on phones. The backdrop belongs to the pill
+ * (summary), so a tap beside the sheet closes it, with or without a script.
+ * The services' marks take the ink like everything else – no brand colours. */
+.share > summary {
+  display: inline-flex; align-items: center; gap: 7px; cursor: pointer; list-style: none; user-select: none;
+  font: 600 0.88rem/1 var(--text); color: var(--ink-2); padding: 8px 14px 8px 12px; border-radius: 999px;
+  box-shadow: inset 0 0 0 1.5px var(--stone-3); transition: box-shadow 0.15s ease, color 0.15s ease;
+}
+.share > summary::-webkit-details-marker { display: none; }
+.share > summary:hover, .share[open] > summary { color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--ink); }
+.share > summary .share-svg { width: 17px; height: 17px; }
+.share[open] > summary::before { content: ''; position: fixed; inset: 0; z-index: 40; background: var(--backdrop); cursor: default; }
+.share-svg { width: 24px; height: 24px; flex: none; }
+.share-sheet {
+  position: fixed; z-index: 41; inset: 0; margin: auto; width: min(452px, calc(100vw - 32px)); height: fit-content;
+  max-height: calc(100vh - 32px); overflow-y: auto; overscroll-behavior: contain;
+  background: var(--surface); border-radius: var(--r-lg); box-shadow: var(--shadow-lift); padding: 22px 24px 24px;
+  animation: share-in 0.18s ease-out;
+}
+.share-heading { font: 600 1.05rem/1.3 var(--text); margin: 0 44px 14px 0; }
+.share-close {
+  position: absolute; top: 14px; right: 14px; width: 36px; height: 36px; padding: 0; justify-content: center;
+  background: transparent; color: var(--ink-2); border: 0; font: 400 1.6rem/1 var(--text);
+}
+.share-close:hover { background: var(--stone-1); color: var(--ink); transform: none; }
+.share-preview { background: var(--stone-1); border-radius: var(--r-md); padding: 14px 16px; margin-bottom: 20px; }
+.share-preview .eyebrow { font-size: 0.82rem; margin-bottom: 2px; }
+.share-headline { font-family: var(--display); font-weight: 560; font-variation-settings: 'SOFT' 100; font-size: 1.12rem; line-height: 1.3; margin: 0; }
+.share-preview .result { margin-top: 10px; padding: 5px 10px; font-size: 0.74rem; }
+.share-targets { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px 6px; }
+.share-target {
+  display: flex; flex-direction: column; align-items: center; gap: 7px; width: 100%; padding: 2px 0; border: 0; border-radius: var(--r-sm);
+  background: none; color: var(--ink-2); font: 500 0.8rem/1.25 var(--text); text-align: center; text-decoration: none; cursor: pointer;
+}
+.share-target:hover { color: var(--ink); transform: none; }
+.share-circle { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: var(--stone-1); color: var(--ink); transition: background 0.15s ease; }
+.share-target:hover .share-circle { background: var(--stone-2); }
+.share-sheet .share-url { margin-top: 20px; font-size: 0.86rem; color: var(--ink-2); background: var(--paper); }
+@keyframes share-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } }
+@keyframes share-up { from { transform: translateY(100%); } }
+@media (max-width: 560px) {
+  .share-sheet {
+    inset: auto 0 0 0; width: 100%; max-height: 88vh; border-radius: var(--r-lg) var(--r-lg) 0 0;
+    padding: 12px 18px calc(20px + env(safe-area-inset-bottom)); animation-name: share-up; animation-duration: 0.24s;
+  }
+  /* the handle of a sheet, as apps have it */
+  .share-sheet::before { content: ''; display: block; width: 40px; height: 4px; border-radius: 2px; background: var(--stone-3); margin: 0 auto 14px; }
+  .share-close { top: 18px; }
+  .share-circle { width: 52px; height: 52px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .share-sheet { animation: none; }
+  .share > summary, .share-circle { transition: none; }
+}
 
 .others { margin-top: 64px; }
 .others ul { padding-left: 1.1em; color: var(--ink-2); }
