@@ -1,4 +1,5 @@
 import { html } from '../html.js';
+import { formatRangeDe } from '../newsletter.js';
 import { formatDateDe, formatDateTimeDe, truncate } from '../text.js';
 import { layout, notices } from './layout.js';
 
@@ -33,7 +34,7 @@ export function adminPage(view, d) {
   <section class="admin-block">
     <h2>Aktionen</h2>
     <div class="admin-actions">
-      <form method="post" action="/admin/tick"><button type="submit">Jetzt aktualisieren</button><p class="meta">Holt neue Beschlüsse aus DIP und die Tagesordnung der nächsten Sitzungstage, schreibt fällige Artikel, verschickt den Newsletter.</p></form>
+      <form method="post" action="/admin/tick"><button type="submit">Jetzt aktualisieren</button><p class="meta">Holt neue Beschlüsse aus DIP und die Tagesordnung der nächsten Sitzungstage, schreibt fällige Artikel, verschickt sonntags den Newsletter.</p></form>
       <form method="post" action="/admin/artikel" class="stack">
         <label for="date">Artikel für Sitzungstag erzeugen</label>
         <input id="date" name="date" type="date" required value="${d.suggestedDate || ''}">
@@ -41,6 +42,14 @@ export function adminPage(view, d) {
         <button type="submit">Erzeugen</button>
         <p class="meta">Läuft im Hintergrund (einige Minuten); das Ergebnis steht unten unter „Protokoll“.</p>
       </form>
+      <div class="stack">
+        <p><strong>Newsletter</strong></p>
+        <p class="meta">Geht sonntags ab ${d.letter.hour} Uhr an alle bestätigten Abos: eine E-Mail mit den Sitzungstagen der Woche. Wochen ohne Sitzung bleiben still.</p>
+        ${d.letter.due
+          ? html`<form method="post" action="/admin/newsletter"><button type="submit" class="secondary">Woche vom ${formatRangeDe(d.letter.from, d.letter.to)} jetzt versenden</button></form>
+            <p class="meta">Diese Woche hat Artikel, die noch nicht verschickt wurden.</p>`
+          : ''}
+      </div>
     </div>
   </section>
 
@@ -65,7 +74,6 @@ export function adminPage(view, d) {
             <td class="meta">${a.usage ? `${a.usage.calls} Aufrufe${a.usage.runs > 1 ? ` in ${a.usage.runs} Fassungen` : ''}, ${Math.round((a.usage.input || 0) / 1000)}k/${Math.round((a.usage.output || 0) / 1000)}k Token` : ''}</td>
             <td>
               <form method="post" action="/admin/artikel/${a.id}/${a.status === 'published' ? 'ausblenden' : 'einblenden'}" class="inline"><button class="link" type="submit">${a.status === 'published' ? 'ausblenden' : 'einblenden'}</button></form>
-              ${!a.mailed_at && a.status === 'published' ? html`<form method="post" action="/admin/artikel/${a.id}/versenden" class="inline"><button class="link" type="submit">jetzt versenden</button></form>` : ''}
             </td>
           </tr>`,
         )}</tbody></table>`
@@ -97,6 +105,7 @@ export function adminPage(view, d) {
 // --- statistics -------------------------------------------------------------------
 
 const fmt = (n) => new Intl.NumberFormat('de-DE').format(n || 0);
+const count = (n, one, many) => `${fmt(n)} ${n === 1 ? one : many}`;
 
 function rankTable(title, rows, { label = (k) => k, empty = 'Noch keine Daten.' } = {}) {
   return html`<div class="stats-table"><h3>${title}</h3>${rows.length
@@ -124,13 +133,25 @@ export function statsPage(view, { days, report }) {
 
   <section class="admin-block">
     <h2>Besuche pro Tag</h2>
-    <svg class="bars" viewBox="0 0 ${series.length * 10} 100" preserveAspectRatio="none" role="img" aria-label="Besuche pro Tag vom ${dayLabel(report.from)} bis ${dayLabel(report.today)}, höchstens ${fmt(max)} an einem Tag">
-      ${series.map((r, i) => {
-        const h = r.visitors ? Math.max(1.5, (r.visitors / max) * 100) : 0;
-        return html`<g><rect class="bar-hit" x="${i * 10}" y="0" width="10" height="100"></rect><rect class="bar" x="${i * 10 + 1.5}" y="${(100 - h).toFixed(2)}" width="7" height="${h.toFixed(2)}" rx="1"></rect><title>${dayLabel(r.day)}: ${fmt(r.visitors)} Besuche, ${fmt(r.views)} Aufrufe</title></g>`;
-      })}
-    </svg>
+    <div class="bars-chart">
+      <p class="bars-hint meta" hidden>Zeiger auf einen Balken, antippen oder Pfeiltasten: die Zahlen des Tages.</p>
+      <p class="bars-tip" hidden aria-live="polite"></p>
+      <svg class="bars" viewBox="0 0 ${series.length * 10} 100" preserveAspectRatio="none" role="img" aria-label="Besuche pro Tag vom ${dayLabel(report.from)} bis ${dayLabel(report.today)}, höchstens ${fmt(max)} an einem Tag">
+        ${series.map((r, i) => {
+          const h = r.visitors ? Math.max(1.5, (r.visitors / max) * 100) : 0;
+          const visits = count(r.visitors, 'Besuch', 'Besuche');
+          const views = count(r.views, 'Aufruf', 'Aufrufe');
+          return html`<g data-day="${formatDateDe(r.day)}" data-visits="${visits}" data-views="${views}"><rect class="bar-hit" x="${i * 10}" y="0" width="10" height="100"></rect><rect class="bar" x="${i * 10 + 1.5}" y="${(100 - h).toFixed(2)}" width="7" height="${h.toFixed(2)}" rx="1"></rect><title>${dayLabel(r.day)}: ${visits}, ${views}</title></g>`;
+        })}
+      </svg>
+    </div>
     <p class="bars-axis meta"><span>${dayLabel(report.from)}</span><span>Spitze: ${fmt(max)}</span><span>${dayLabel(report.today)}</span></p>
+    <details class="bars-table">
+      <summary>Alle Tage als Tabelle</summary>
+      <table><thead><tr><th>Tag</th><th class="num">Besuche</th><th class="num">Aufrufe</th></tr></thead><tbody>${[...series].reverse().map(
+        (r) => html`<tr><td>${formatDateDe(r.day)}</td><td class="num">${fmt(r.visitors)}</td><td class="num">${fmt(r.views)}</td></tr>`,
+      )}</tbody></table>
+    </details>
   </section>
 
   <section class="admin-block stats-grid">
@@ -140,5 +161,5 @@ export function statsPage(view, { days, report }) {
     ${rankTable('Geräte', report.devices)}
   </section>
   <p class="meta">Ein „Besuch“ ist eine Person an einem Tag: Wer an drei Tagen kommt, zählt dreimal. Gezählt wird ohne Cookies, Bots und Admins werden nicht mitgezählt. Rohdaten werden nach gut einem Jahr gelöscht.</p>`;
-  return layout(view, { title: 'Statistik', body, noindex: true });
+  return layout(view, { title: 'Statistik', body, noindex: true, scripts: ['stats'] });
 }

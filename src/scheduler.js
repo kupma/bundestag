@@ -3,7 +3,7 @@
 // of the coming sitting days (every two hours) with a short summary of each
 // new Drucksache on it, write the
 // article for one finished sitting day (or refresh one that DIP has added to
-// since), and send the newsletter for articles that have not gone out yet. Each step is idempotent,
+// since), and on Sundays send the letter about the week's sitting days. Each step is idempotent,
 // so a tick that runs twice, late, or on two replicas at once does no harm;
 // the advisory lock just saves the second one the work.
 
@@ -12,7 +12,7 @@ import { pruneTraffic } from './analytics.js';
 import { generateArticle, outdatedArticles, pendingDates, refreshCandidates } from './articles.js';
 import { syncDecisions } from './dip.js';
 import { recentFailures, runJob } from './jobs.js';
-import { mailArticle } from './newsletter.js';
+import { lastSunday, letterDue, mailWeek } from './newsletter.js';
 import { pingIndexNow } from './seo.js';
 import { pendingSummaries, writeSummaries } from './summaries.js';
 import { addDays, berlinDate, berlinHour } from './text.js';
@@ -30,7 +30,7 @@ const state = { lastSync: 0, lastAgenda: 0 };
 export async function tick(ctx, { now = new Date(), forceSync = false } = {}) {
   const { db, config } = ctx;
   const outcome = await db.tryLock(TICK_LOCK, async () => {
-    const report = { sync: null, agenda: null, summaries: null, generated: [], refreshed: [], mailed: [], notes: [] };
+    const report = { sync: null, agenda: null, summaries: null, generated: [], refreshed: [], mailed: null, notes: [] };
     const today = berlinDate(now);
     const hour = berlinHour(now);
     // Until the first article exists, look back far enough to find the most
@@ -141,21 +141,14 @@ export async function tick(ctx, { now = new Date(), forceSync = false } = {}) {
     const fresh = [...report.generated.map((g) => g.slug), ...report.refreshed.map((r) => r.slug)].filter(Boolean);
     if (fresh.length) await pingIndexNow(ctx, [...fresh.map((slug) => `/artikel/${slug}`), '/', '/archiv']);
 
-    // 3. letters, in waking hours only
-    if (ctx.mailer.configured && hour >= config.earliestHour && hour < 21) {
-      const { rows } = await db.query(
-        `select id, sitting_date from articles
-          where status = 'published' and mailed_at is null and sitting_date >= $1
-          order by sitting_date`,
-        [addDays(today, -config.mailMaxAgeDays)],
-      );
-      for (const a of rows) {
-        try {
-          const r = await runJob(db, 'newsletter', (log) => mailArticle(ctx, a.id, { log }));
-          report.mailed.push({ date: a.sitting_date, ...r });
-        } catch (err) {
-          report.notes.push(`Newsletter ${a.sitting_date}: ${err.message}`);
-        }
+    // 3. the weekly letter: on Sundays, about the sitting week that ends that
+    // day. By then Friday's article is written and most votes are in.
+    const sunday = lastSunday(today) === today;
+    if (ctx.mailer.configured && sunday && hour >= config.newsletterHour && hour < 21 && (await letterDue(db, today))) {
+      try {
+        report.mailed = await runJob(db, 'newsletter', (log) => mailWeek(ctx, today, { log }));
+      } catch (err) {
+        report.notes.push(`Newsletter: ${err.message}`);
       }
     }
     // 4. statistics older than about a year are not kept

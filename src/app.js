@@ -32,7 +32,7 @@ import {
 } from './auth.js';
 import { syncDecisions } from './dip.js';
 import { runJob, recentJobs } from './jobs.js';
-import { mailArticle } from './newsletter.js';
+import { lastSunday, letterDue, mailWeek, weekOf } from './newsletter.js';
 import { createLimiter } from './ratelimit.js';
 import { tick } from './scheduler.js';
 import { manifest, newsSitemapXml, robotsTxt, sitemapXml } from './seo.js';
@@ -461,7 +461,7 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
       return c.html(messagePage(c.view, { title: 'Link ungültig', message: 'Dieser Bestätigungslink ist abgelaufen oder wurde schon benutzt. Im Konto kannst du einen neuen anfordern.', link: '/konto', linkLabel: 'Zum Konto' }), 400);
     }
     await db.query('update users set email_verified_at = coalesce(email_verified_at, now()) where id = $1', [userId]);
-    c.html(messagePage(c.view, { title: 'E-Mail-Adresse bestätigt', message: 'Danke! Deine Adresse ist bestätigt. Du kannst jetzt kommentieren, und falls du den Newsletter abonniert hast, kommt er ab dem nächsten Sitzungstag.' }));
+    c.html(messagePage(c.view, { title: 'E-Mail-Adresse bestätigt', message: 'Danke! Deine Adresse ist bestätigt. Du kannst jetzt kommentieren, und falls du den Newsletter abonniert hast, kommt er am Sonntag nach der nächsten Sitzungswoche.' }));
   });
 
   route('POST', '/konto/loeschen', async (c) => {
@@ -565,6 +565,7 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
         days,
         comments,
         jobs: await recentJobs(db, 30),
+        letter: { ...weekOf(lastSunday(today)), due: await letterDue(db, lastSunday(today)), hour: config.newsletterHour },
         suggestedDate: days.find((d) => !d.slug)?.sitting_date || addDays(today, -1),
       }),
     );
@@ -607,11 +608,15 @@ export function createApp(ctx, { limits: limitOverrides = {} } = {}) {
       await db.query('update articles set status = $2 where id = $1', [id, c.params.action === 'ausblenden' ? 'hidden' : 'published']);
       return c.redirect('/admin?ok=status');
     }
-    if (c.params.action === 'versenden') {
-      background('newsletter', () => runJob(db, 'newsletter', (log) => mailArticle(ctx, id, { log })));
-      return c.redirect('/admin?ok=versand');
-    }
     throw new HttpError(404);
+  });
+
+  // The letter of the latest week that has ended, if the clock missed it.
+  route('POST', '/admin/newsletter', async (c) => {
+    if (!requireAdmin(c)) return;
+    const sunday = lastSunday(berlinDate());
+    background('newsletter', () => runJob(db, 'newsletter', (log) => mailWeek(ctx, sunday, { log })));
+    c.redirect('/admin?ok=versand');
   });
 
   // --- the request loop ---------------------------------------------------------------

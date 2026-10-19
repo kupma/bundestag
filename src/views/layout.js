@@ -22,6 +22,7 @@ export const ASSET_VERSION = {
   landingJs: version('landing.js'),
   articleJs: version('article.js'),
   shareJs: version('share.js'),
+  statsJs: version('stats.js'),
   shareIcons: version('share-icons.svg'),
   og: version('og.png'),
 };

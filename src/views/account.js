@@ -24,7 +24,7 @@ export function loginPage(view, { email = '', next = '', error = '', notice = ''
 export function registerPage(view, { values = {}, errors = [], next = '' } = {}) {
   const body = html`<section class="form-page">
     <h1>Registrieren</h1>
-    <p>Mit einem Konto kannst du die Artikel kommentieren und den täglichen Newsletter bekommen.</p>
+    <p>Mit einem Konto kannst du die Artikel kommentieren und den Newsletter bekommen: sonntags eine E-Mail über die Sitzungswoche.</p>
     ${notices({ errors })}
     <form class="form-card" method="post" action="/registrieren">
       ${hiddenNext(next)}
@@ -34,7 +34,7 @@ export function registerPage(view, { values = {}, errors = [], next = '' } = {})
       <input id="email" name="email" type="email" required value="${values.email || ''}" autocomplete="email">
       <label for="password">Passwort <span class="meta">(mindestens 10 Zeichen)</span></label>
       <input id="password" name="password" type="password" required minlength="10" autocomplete="new-password">
-      <label class="check"><input type="checkbox" name="newsletter" value="1"${values.newsletter ? html` checked` : ''}> Ja, ich möchte nach jedem Sitzungstag den Artikel per E-Mail erhalten. Abbestellen ist jederzeit möglich.</label>
+      <label class="check"><input type="checkbox" name="newsletter" value="1"${values.newsletter ? html` checked` : ''}> Ja, ich möchte sonntags per E-Mail lesen, was der Bundestag in der Woche beschlossen hat. Abbestellen ist jederzeit möglich.</label>
       <label class="check"><input type="checkbox" name="privacy" value="1" required${values.privacy ? html` checked` : ''}> Ich habe die <a href="/datenschutz" target="_blank">Datenschutzerklärung</a> gelesen.</label>
       <button type="submit">Konto anlegen</button>
     </form>
@@ -58,7 +58,7 @@ export function accountPage(view, { notice = '', error = '', mailConfigured, com
     <h2>Newsletter</h2>
     ${mailConfigured
       ? html`<form class="form-card" method="post" action="/konto/newsletter">
-          <label class="check"><input type="checkbox" name="newsletter" value="1"${u.newsletter ? html` checked` : ''}> Artikel nach jedem Sitzungstag per E-Mail erhalten</label>
+          <label class="check"><input type="checkbox" name="newsletter" value="1"${u.newsletter ? html` checked` : ''}> Sonntags per E-Mail lesen, was der Bundestag in der Woche beschlossen hat</label>
           ${u.newsletter && !u.email_verified_at ? html`<p class="meta">Der Versand beginnt, sobald deine E-Mail-Adresse bestätigt ist.</p>` : ''}
           <button type="submit" class="secondary">Speichern</button>
         </form>`

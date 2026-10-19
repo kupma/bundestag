@@ -2,7 +2,7 @@
 
 What the Bundestag decides, explained.
 
-After every sitting day of the German Bundestag, this site publishes an article that goes through the day's decisions in plain language: what was decided, what it means, and how each parliamentary group voted. Every decision links to its documents (the Drucksachen and the plenary protocol). Readers can register, comment on the articles, get each article by email, and share an article or a single decision (see *Sharing* below).
+After every sitting day of the German Bundestag, this site publishes an article that goes through the day's decisions in plain language: what was decided, what it means, and how each parliamentary group voted. Every decision links to its documents (the Drucksachen and the plenary protocol). Readers can register, comment on the articles, get a weekly email on Sundays about the sitting week, and share an article or a single decision (see *Sharing* below).
 
 Earlier versions also compared every decision with the parties' election programmes. That is gone: a parliament that only ever did what the programmes say could not form coalitions or find compromises, so measuring decisions against them told readers less than it seemed to. That and everything else the site has dropped is in [GRAVEYARD.md](GRAVEYARD.md): what it was, when it went, and why. Look there before planning something new.
 
@@ -32,7 +32,8 @@ DIP API ──► decisions (grouped per Vorgang and day) ──► details: abs
 - **Decisions** come from the Bundestag's documentation system [DIP](https://dip.bundestag.de) (`/vorgangsposition`). A decision is a plenary position with a *Beschlussfassung*. Referrals to committee don't count, and the 2nd and 3rd reading of the same bill on the same day are merged into one. Bills and roll-call votes are ranked first. Petitions and elections go to a short list at the end.
 - **How the groups voted** isn't in DIP's structured data. It is in the plenary protocol, in the President's vote formula ("mit den Stimmen der … gegen die Stimmen der …"). `src/protocol.js` finds these sentences next to the decision's Drucksache numbers and passes them to Claude, which turns them into one vote per group: *dafür*, *dagegen*, *enthalten*, *gespalten* or *unbekannt*. Until the protocol is out, every vote is *unbekannt*, whatever the model says.
 - **Claude** (`claude-sonnet-5-5`, adaptive thinking, structured outputs) is called `1 + number of decisions` times per article. Requests opt into server-side refusal fallbacks (`fallbacks: "default"`), because parliamentary topics such as defence and extremism can trip a safety classifier.
-- **Timing:** a built-in clock ticks every 15 minutes (the preview's agenda has its own schedule, see *The preview*). It fetches DIP hourly and never writes about the current day. Yesterday's sitting is written the next morning (from 06:00 Berlin time), or earlier once its data has stopped changing for 12 hours. DIP records a sitting's decisions over one or two days, so the article is rewritten as the rest arrives (once the new data has been quiet for 12 hours, or the day is two days old). If DIP adds decisions later, or the plenary protocol (with the votes) only appears after the article, the article is rewritten; the newsletter is not sent again. On the very first run the app looks back four weeks and writes the most recent sitting week, so a new site does not start empty. It stays quiet before 06:00 Berlin time and gives up on a date after 3 failures in 24 hours. Emails go out between 06:00 and 21:00, and only for sitting days of the last three days.
+- **Timing:** a built-in clock ticks every 15 minutes (the preview's agenda has its own schedule, see *The preview*). It fetches DIP hourly and never writes about the current day. Yesterday's sitting is written the next morning (from 06:00 Berlin time), or earlier once its data has stopped changing for 12 hours. DIP records a sitting's decisions over one or two days, so the article is rewritten as the rest arrives (once the new data has been quiet for 12 hours, or the day is two days old). If DIP adds decisions later, or the plenary protocol (with the votes) only appears after the article, the article is rewritten; the newsletter is not sent again. On the very first run the app looks back four weeks and writes the most recent sitting week, so a new site does not start empty. It stays quiet before 06:00 Berlin time and gives up on a date after 3 failures in 24 hours.
+- **Newsletter:** one email per sitting week, on Sunday from 08:00 Berlin time (`NEWSLETTER_HOUR`): each sitting day of the week that ends that Sunday with its title, lede and decisions, linked to the article, and at most three suggestions for the whole week. A week without a sitting sends nothing. Each person gets a week's letter at most once (`newsletter_deliveries`); an article written or rewritten after the letter went out is not mailed again. If the clock missed a Sunday, the admin area offers to send the latest week by hand.
 
 ## The preview
 
@@ -86,7 +87,7 @@ Every article has a **Teilen** button in its header, and every decision one at t
 
 ## Visitors and search engines
 
-- **Statistics** (`/admin/statistik`): the server counts the pages it delivers to people – no cookie, no script, no third party. A visit is told apart by a hash of IP address, browser and a salt that is replaced and deleted every day, so nobody can be recognised across days. Bots and admins are not counted. It shows visits per day, pages, referrers (Google, Bluesky, …), `utm_source` campaigns (the newsletter links carry `utm_source=newsletter`) and devices. Raw rows are deleted after about 400 days.
+- **Statistics** (`/admin/statistik`): the server counts the pages it delivers to people – no cookie, no script, no third party. A visit is told apart by a hash of IP address, browser and a salt that is replaced and deleted every day, so nobody can be recognised across days. Bots and admins are not counted. It shows visits per day (a day's numbers appear above its bar on hover, tap or with the arrow keys, and all days are listed in a table), pages, referrers (Google, Bluesky, …), `utm_source` campaigns (the newsletter links carry `utm_source=newsletter`) and devices. Raw rows are deleted after about 400 days.
 - **SEO:** every page has a description, a canonical address (query strings never make a second one), Open Graph and Twitter cards with `static/og.png`. Articles carry `NewsArticle` and breadcrumb structured data and the sitting date in their title; the landing page carries `WebSite`, `Organization` and `FAQPage`. `/sitemap.xml`, `/news-sitemap.xml`, `/robots.txt`, `/feed.xml` and a web app manifest are generated from the database.
 - **The landing page** (`/`) is a scroll through the plenary hall, drawn by `static/landing.js` on a canvas without any library: it starts above the seating plan of the 21st Bundestag and ends at the lectern, with one camera view per text card and the camera gliding after the scroll. The hall is never quiet: lines of debate arc from seat to seat, always across an aisle, and every line is answered – democracy as people who keep talking to each other. During the vote (card 3) the hall falls silent and the seats light up row by row; at the lectern the reader is part of the conversation. A click on a seat lets it speak. The animation only runs while the hall is on screen. Readers who prefer reduced motion get the still plan with a few finished exchanges; without JavaScript, a small SVG plan and the text.
 
@@ -107,7 +108,7 @@ Scripts (all read the same environment variables, so they also work with `railwa
 |---|---|
 | `npm run dip:probe -- 2026-09-24 [2026-09-26] [--raw]` | what DIP returns and which decisions the app extracts. Read-only |
 | `npm run agenda:probe -- [2026-10-05] [--raw]` | what the Bundestag's agenda returns for the coming weeks and which items the preview counts as votes. Read-only |
-| `npm run generate -- 2026-09-24 [--force] [--mail]` | (re)write one day's article |
+| `npm run generate -- 2026-09-24 [--force]` | (re)write one day's article |
 
 ## Layout
 
@@ -121,7 +122,7 @@ src/agenda.js        the agenda of the coming sitting days, and which items are 
 src/summaries.js     "Worum es geht" and "Aus dem Ausschuss": short summaries of the Drucksachen on the agenda
 src/plenum.js        the parliamentary groups, in the order they sit
 src/claude.js        Claude calls (structured output, fallbacks)
-src/newsletter.js    daily email, sent at most once per person
+src/newsletter.js    weekly email on Sundays, sent at most once per person and week
 src/scheduler.js     the 15-minute tick
 src/mitmachen.js     content of the /mitmachen page
 src/resources.js     the only links suggestions may point to
@@ -135,6 +136,7 @@ src/seo.js           robots.txt, sitemaps, manifest, IndexNow
 static/landing.js    the plenary hall animation on the landing page
 static/share.js      what the share sheet does with JavaScript: copy, the device's share menu, Escape
 static/share-icons.svg  the share sheet's icons
+static/stats.js      the day's numbers above a bar in the admin statistics
 static/fonts/        self-hosted fonts (SIL OFL)
 test/                node:test suites with PGlite and fake Claude/DIP/mail
 GRAVEYARD.md         features and approaches the site has dropped, and why

@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { ARTICLE_VERSION, checkVotes, generateArticle, outdatedArticles, pendingDates } from '../src/articles.js';
 import { syncDecisions } from '../src/dip.js';
-import { mailArticle } from '../src/newsletter.js';
+import { formatRangeDe, lastSunday, letterDue, mailWeek, weekOf } from '../src/newsletter.js';
 import { tick } from '../src/scheduler.js';
 import { fakeClaude, fakeDip, fakeMailer, makeConfig, makeDb, samplePositions } from './helpers.js';
 
@@ -138,24 +138,36 @@ test('pendingDates waits until a sitting day has stopped changing', async () => 
   await ctx.db.close();
 });
 
-test('newsletter goes to confirmed subscribers only, and only once', async () => {
+const subscribe = (ctx, email, newsletter = true, verified = true) =>
+  ctx.db.query(
+    `insert into users (email, display_name, password_hash, newsletter, email_verified_at, unsubscribe_token) values ($1, 'N', 'x', $2, $3, $1)`,
+    [email, newsletter, verified ? new Date() : null],
+  );
+
+test('weeks run Monday to Sunday and are named by their Sunday', () => {
+  assert.deepEqual(weekOf('2026-09-24'), { from: '2026-09-21', to: '2026-09-27' });
+  assert.deepEqual(weekOf('2026-09-21'), { from: '2026-09-21', to: '2026-09-27' });
+  assert.deepEqual(weekOf('2026-09-27'), { from: '2026-09-21', to: '2026-09-27' });
+  assert.equal(lastSunday('2026-09-27'), '2026-09-27');
+  assert.equal(lastSunday('2026-09-24'), '2026-09-20');
+  assert.equal(formatRangeDe('2026-09-23', '2026-09-25'), '23. bis 25. September 2026');
+  assert.equal(formatRangeDe('2026-09-30', '2026-10-02'), '30. September bis 2. Oktober 2026');
+});
+
+test('the weekly letter goes to confirmed subscribers only, and only once', async () => {
   const ctx = await setup();
   const { articleId } = await generateArticle(ctx, '2026-09-24');
-  const add = (email, newsletter, verified) =>
-    ctx.db.query(
-      `insert into users (email, display_name, password_hash, newsletter, email_verified_at, unsubscribe_token) values ($1, 'N', 'x', $2, $3, $1)`,
-      [email, newsletter, verified ? new Date() : null],
-    );
-  await add('yes@example.de', true, true);
-  await add('unconfirmed@example.de', true, false);
-  await add('no@example.de', false, true);
+  await subscribe(ctx, 'yes@example.de');
+  await subscribe(ctx, 'unconfirmed@example.de', true, false);
+  await subscribe(ctx, 'no@example.de', false);
 
-  const first = await mailArticle(ctx, articleId, { pauseMs: 0 });
-  assert.deepEqual(first, { sent: 1, failed: 0 });
+  const first = await mailWeek(ctx, '2026-09-27', { pauseMs: 0 });
+  assert.deepEqual(first, { week: '2026-09-27', days: 1, sent: 1, failed: 0 });
   const letter = ctx.mailer.sent[0];
   assert.equal(letter.to, 'yes@example.de');
-  assert.match(letter.subject, /Mietpreisbremse bleibt/);
-  assert.match(letter.text, /http:\/\/localhost:3999\/artikel\/2026-09-24/);
+  assert.equal(letter.subject, 'Die Sitzung vom 24. September 2026 – Wahlwort');
+  assert.match(letter.text, /Mietpreisbremse bleibt/);
+  assert.match(letter.text, /http:\/\/localhost:3999\/artikel\/2026-09-24\?utm_source=newsletter/);
   assert.match(letter.unsubscribeUrl, /\/newsletter\/abmelden\?t=yes%40example\.de$/);
   assert.doesNotMatch(letter.html, /<script/);
   assert.match(letter.text, /Gemeinsamkeiten: Beim Mieterschutz/);
@@ -163,30 +175,66 @@ test('newsletter goes to confirmed subscribers only, and only once', async () =>
   assert.match(letter.text, /Mietervereine vor Ort: https:\/\/www\.mieterbund\.de/);
   assert.match(letter.html, /Was du tun kannst/);
 
-  assert.deepEqual(await mailArticle(ctx, articleId, { pauseMs: 0 }), { sent: 0, failed: 0 });
+  assert.equal((await mailWeek(ctx, '2026-09-27', { pauseMs: 0 })).sent, 0);
   assert.equal(ctx.mailer.sent.length, 1);
   assert.ok((await ctx.db.one('select mailed_at from articles where id = $1', [articleId])).mailed_at);
+  assert.equal(await letterDue(ctx.db, '2026-09-27'), false);
   await ctx.db.close();
 });
 
-test('tick fetches, writes one article, mails it – and a second tick does nothing new', async () => {
+test('one letter covers every sitting day of the week', async () => {
+  const ctx = await setupWith({ positions: [...samplePositions('2026-09-23'), ...samplePositions('2026-09-24')] });
+  await syncDecisions(ctx, { start: '2026-09-20', end: '2026-09-25' });
+  await generateArticle(ctx, '2026-09-23');
+  await generateArticle(ctx, '2026-09-24');
+  await subscribe(ctx, 's@example.de');
+  const r = await mailWeek(ctx, '2026-09-27', { pauseMs: 0 });
+  assert.equal(r.days, 2);
+  const [letter] = ctx.mailer.sent;
+  assert.equal(letter.subject, 'Die Sitzungswoche vom 23. bis 24. September 2026 – Wahlwort');
+  assert.ok(letter.text.indexOf('MITTWOCH, 23. SEPTEMBER 2026') < letter.text.indexOf('DONNERSTAG, 24. SEPTEMBER 2026'), 'in the order of the week');
+  assert.match(letter.html, /artikel\/2026-09-23\?utm_source=newsletter/);
+  assert.match(letter.html, /artikel\/2026-09-24\?utm_source=newsletter/);
+  assert.equal(letter.text.match(/Prüfe mit dem Mietspiegel/g).length, 1, 'the same step once');
+  assert.equal(ctx.mailer.sent.length, 1);
+  // A week without a sitting sends nothing.
+  assert.deepEqual(await mailWeek(ctx, '2026-10-04', { pauseMs: 0 }), { sent: 0, failed: 0 });
+  await ctx.db.close();
+});
+
+test('tick fetches and writes one article, and a second tick does nothing new', async () => {
   const ctx = await setup();
-  await ctx.db.query(`insert into users (email, display_name, password_hash, newsletter, email_verified_at, unsubscribe_token) values ('s@example.de', 'S', 'x', true, now(), 't1')`);
+  await subscribe(ctx, 's@example.de');
   // 10:00 in Berlin, the day after the sitting.
   const now = new Date('2026-09-25T08:00:00Z');
   const report = await tick(ctx, { now, forceSync: true });
   assert.ok(report.sync, 'synced');
   assert.deepEqual(report.generated, [{ date: '2026-09-24', slug: '2026-09-24' }]);
-  assert.equal(report.mailed.length, 1);
-  assert.equal(ctx.mailer.sent.length, 1);
+  assert.equal(report.mailed, null, 'the letter waits for Sunday');
+  assert.equal(ctx.mailer.sent.length, 0);
 
   const again = await tick(ctx, { now, forceSync: true });
   assert.deepEqual(again.generated, []);
-  assert.deepEqual(again.mailed, []);
-  assert.equal(ctx.mailer.sent.length, 1);
 
   const jobs = await ctx.db.query('select kind, ok from job_runs order by id');
   assert.ok(jobs.rows.some((j) => j.kind === 'article:2026-09-24' && j.ok));
+  await ctx.db.close();
+});
+
+test('the letter goes out on Sunday from NEWSLETTER_HOUR, once', async () => {
+  const ctx = await setup();
+  await subscribe(ctx, 's@example.de');
+  await tick(ctx, { now: new Date('2026-09-25T08:00:00Z'), forceSync: true });
+  assert.equal((await tick(ctx, { now: new Date('2026-09-26T08:00:00Z') })).mailed, null, 'not on Saturday');
+  // Sunday, 07:00 and 09:00 in Berlin
+  assert.equal((await tick(ctx, { now: new Date('2026-09-27T05:00:00Z') })).mailed, null, 'not before 8');
+  const sunday = await tick(ctx, { now: new Date('2026-09-27T07:00:00Z') });
+  assert.deepEqual(sunday.mailed, { week: '2026-09-27', days: 1, sent: 1, failed: 0 });
+  assert.equal(ctx.mailer.sent.length, 1);
+  assert.equal((await tick(ctx, { now: new Date('2026-09-27T07:15:00Z') })).mailed, null, 'once');
+  // The next Sunday: no sitting that week, no letter.
+  assert.equal((await tick(ctx, { now: new Date('2026-10-04T07:00:00Z') })).mailed, null);
+  assert.equal(ctx.mailer.sent.length, 1);
   await ctx.db.close();
 });
 
@@ -311,7 +359,6 @@ test('an article written before the protocol is rewritten once the votes are pub
   const before = (await ctx.db.one('select body from articles')).body;
   assert.equal(before.protocolAvailable, false);
   assert.ok(before.decisions.every((d) => d.votes.every((v) => v.vote === 'unbekannt')), 'no protocol, no votes');
-  assert.equal(ctx.mailer.sent.length, 1);
 
   const stillMissing = await tick(ctx, { now: new Date('2026-09-25T09:10:00Z'), forceSync: true });
   assert.deepEqual(stillMissing.refreshed, [], 'no rewrite while the protocol is missing');
@@ -329,7 +376,6 @@ test('an article written before the protocol is rewritten once the votes are pub
   assert.equal(body.protocolAvailable, true);
   const bill = body.decisions.find((d) => d.title.includes('Mietpreisbremse'));
   assert.equal(bill.votes.find((v) => v.fraktion === 'SPD').vote, 'dafür');
-  assert.equal(ctx.mailer.sent.length, 1, 'the newsletter is not sent again');
   await ctx.db.close();
 });
 

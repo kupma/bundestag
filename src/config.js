@@ -79,7 +79,8 @@ export function loadConfig(env = process.env) {
     backfillDays: int(env.BACKFILL_DAYS, 28),
     earliestHour: int(env.ARTICLE_EARLIEST_HOUR, 6),
     maxDecisions: int(env.ARTICLE_MAX_DECISIONS, 8),
-    mailMaxAgeDays: int(env.MAIL_MAX_AGE_DAYS, 3),
+    // The weekly letter goes out on Sundays from this hour (Berlin).
+    newsletterHour: int(env.NEWSLETTER_HOUR, 8),
 
     // Search engines and statistics, all optional.
     seo: {

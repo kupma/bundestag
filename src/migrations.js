@@ -214,4 +214,21 @@ alter table drucksache_summaries add column kurz text not null default '';
 alter table drucksache_summaries add column version int not null default 1;
 `,
   },
+  {
+    id: 7,
+    sql: `
+-- The weekly letter (src/newsletter.js): at most one per person per week, the
+-- week named by its Sunday, and claimed before it goes out. email_deliveries
+-- did the same for the daily letters until 2026-10 and is no longer written.
+create table newsletter_deliveries (
+  week text not null,
+  user_id int not null references users(id) on delete cascade,
+  status text not null,
+  provider_id text,
+  error text,
+  created_at timestamptz not null default now(),
+  primary key (week, user_id)
+);
+`,
+  },
 ];
