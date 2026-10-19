@@ -4,7 +4,7 @@ What the Bundestag decides, explained.
 
 After every sitting day of the German Bundestag, this site publishes an article that goes through the day's decisions in plain language: what was decided, what it means, and how each parliamentary group voted. Every decision links to its documents (the Drucksachen and the plenary protocol). Readers can register, comment on the articles, and get each article by email.
 
-Earlier versions also compared every decision with the parties' election programmes. That is gone: a parliament that only ever did what the programmes say could not form coalitions or find compromises, so measuring decisions against them told readers less than it seemed to.
+Earlier versions also compared every decision with the parties' election programmes. That is gone: a parliament that only ever did what the programmes say could not form coalitions or find compromises, so measuring decisions against them told readers less than it seemed to. That and everything else the site has dropped is in [GRAVEYARD.md](GRAVEYARD.md): what it was, when it went, and why. Look there before planning something new.
 
 The **/vorschau** page looks ahead: the agenda of the coming sitting days, with the items that end in a vote first (see *The preview* below).
 
@@ -126,6 +126,7 @@ src/seo.js           robots.txt, sitemaps, manifest, IndexNow
 static/landing.js    the plenary hall animation on the landing page
 static/fonts/        self-hosted fonts (SIL OFL)
 test/                node:test suites with PGlite and fake Claude/DIP/mail
+GRAVEYARD.md         features and approaches the site has dropped, and why
 ```
 
 ## Good to know
